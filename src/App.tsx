@@ -26,6 +26,7 @@ import { ConnectionSettingsView } from './components/ConnectionSettingsView';
 import { CompanySettingsView } from './components/CompanySettingsView';
 import { UpdateSettingsView } from './components/UpdateSettingsView';
 import { UsersManagementView } from './components/UsersManagementView';
+import { UserProfileView } from './components/UserProfileView';
 import { ActivityLogView } from './components/ActivityLogView';
 import { InteractiveTestSandbox } from './components/InteractiveTestSandbox';
 import { ModuleViewer } from './components/ModuleViewer';
@@ -266,6 +267,13 @@ export default function App() {
             )}
 
             {/* 10. اداره المستخدمين والصلاحيات وسجل الحركات */}
+            {activeTab === 'profile' && (
+              <UserProfileView 
+                currentUser={currentUser} 
+                onUpdateUser={(updated) => setCurrentUser(updated)} 
+              />
+            )}
+
             {activeTab === 'users_management' && (
               <UsersManagementView />
             )}

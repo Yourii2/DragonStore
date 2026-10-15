@@ -34,7 +34,6 @@ import {
 } from 'lucide-react';
 import { CurrentUser } from '../store/systemAuthStore';
 import { alertsStore, SystemAlert, AlertCategory } from '../store/alertsStore';
-import { UserProfileModal } from './UserProfileModal';
 
 interface TopHeaderProps {
   currentUser: CurrentUser;
@@ -610,7 +609,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                   <button
                     onClick={() => {
                       setShowUserMenu(false);
-                      setIsProfileModalOpen(true);
+                      if (onNavigateTab) {
+                        onNavigateTab('profile');
+                      }
                     }}
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
@@ -640,16 +641,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
         </div>
       </div>
-
-      {/* User Profile & Password Change Modal */}
-      <UserProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        currentUser={currentUser}
-        onUpdateUser={(updated) => {
-          if (onUpdateUser) onUpdateUser(updated);
-        }}
-      />
     </header>
   );
 };

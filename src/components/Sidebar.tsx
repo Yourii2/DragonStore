@@ -154,6 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: ShieldCheck, 
       isDropdown: true,
       children: [
+        { id: 'profile', label: 'الملف الشخصي وكلمة المرور', icon: UserCheck },
         { id: 'users_management', label: 'اداره المستخدمين', icon: Users },
         { id: 'user_permissions', label: 'صلاحيات المستخدمين', icon: Key },
         { id: 'activity_log', label: 'سجل الحركات', icon: History }
