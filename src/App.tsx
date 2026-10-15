@@ -174,22 +174,6 @@ export default function App() {
 
         {/* Main Body Container */}
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          
-          {/* Top Clean Context Bar */}
-          <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-800/40">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">مرحباً بك،</span>
-              <strong className="text-xs font-black text-cyan-400">{currentUser.name}</strong>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold">
-                {currentUser.roleTitleAr}
-              </span>
-            </div>
-
-            <div className="text-[11px] font-bold text-slate-400">
-              {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </div>
-          </div>
-
           {/* Render Active View according to exact requested items */}
           <div className="transition-all duration-300">
             
