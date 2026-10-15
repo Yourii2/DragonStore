@@ -3,7 +3,7 @@ import { TopHeader } from './components/TopHeader';
 import { Sidebar } from './components/Sidebar';
 import { FooterBar } from './components/FooterBar';
 import { OverviewHero } from './components/OverviewHero';
-import { ProductionDashboard } from './components/ProductionDashboard';
+import { ModernDashboardView } from './components/ModernDashboardView';
 import { ProductsManagementView } from './components/ProductsManagementView';
 import { CustomersManagementView } from './components/CustomersManagementView';
 import { CustomerTransactionsView } from './components/CustomerTransactionsView';
@@ -195,17 +195,10 @@ export default function App() {
             
             {/* 1. الصفحه الرئيسيه */}
             {activeTab === 'dashboard' && (
-              <div className="space-y-8">
-                <OverviewHero onSelectSection={(tab) => setActiveTab(tab)} />
-                <LiveSystemVerificationHub 
-                  onNavigateTab={(tab) => {
-                    setActiveTab(tab);
-                    scrollToTop();
-                  }}
-                  isDarkMode={isDarkMode}
-                />
-                <ProductionDashboard />
-              </div>
+              <ModernDashboardView onNavigate={(tab) => {
+                setActiveTab(tab);
+                scrollToTop();
+              }} />
             )}
 
             {/* 2. اداره المنتجات و المخازن و التصنيفات */}

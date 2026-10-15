@@ -2321,6 +2321,106 @@ app.post('/api/sales', async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// Real-time Dashboard KPI & Analytics API
+// -------------------------------------------------------------
+app.get('/api/dashboard/stats', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const firstDayOfMonth = today.slice(0, 7) + '-01';
+
+    // 1. Sales & Revenue KPIs
+    const [salesToday]: any = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(net_total), 0) as total, COALESCE(SUM(paid_amount), 0) as paid, COALESCE(SUM(gross_profit), 0) as profit
+       FROM sales_invoices WHERE status = 'COMPLETED' AND date = ?`,
+      [today]
+    );
+
+    const [salesMonth]: any = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(net_total), 0) as total, COALESCE(SUM(gross_profit), 0) as profit
+       FROM sales_invoices WHERE status = 'COMPLETED' AND date >= ?`,
+      [firstDayOfMonth]
+    );
+
+    const [quotations]: any = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(net_total), 0) as total FROM sales_invoices WHERE status = 'QUOTATION'`
+    );
+
+    // 2. Inventory & Stock Valuation
+    const [products]: any = await pool.query(
+      `SELECT COUNT(*) as total_items,
+              COALESCE(SUM(current_stock), 0) as total_units,
+              COALESCE(SUM(current_stock * buy_price), 0) as inventory_cost_valuation,
+              COALESCE(SUM(current_stock * sell_price), 0) as inventory_sell_valuation,
+              COALESCE(SUM(CASE WHEN current_stock <= min_stock THEN 1 ELSE 0 END), 0) as low_stock_count,
+              COALESCE(SUM(CASE WHEN current_stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock_count
+       FROM products`
+    );
+
+    // 3. Treasuries & Accounts Cash
+    const [accounts]: any = await pool.query(
+      `SELECT id, name, account_code, COALESCE(balance, 0) as balance, type FROM accounts ORDER BY id ASC`
+    );
+    const totalLiquidity = accounts.reduce((acc: number, a: any) => acc + Number(a.balance || 0), 0);
+
+    // 4. Receivables (Customers Debt) & Payables (Suppliers Debt)
+    const [customers]: any = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(balance), 0) as total_receivables FROM customers`
+    );
+
+    const [suppliers]: any = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(balance), 0) as total_payables FROM suppliers`
+    );
+
+    // 5. Recent 7-days sales trend for chart
+    const [recentDays]: any = await pool.query(
+      `SELECT date, COALESCE(SUM(net_total), 0) as daily_sales, COALESCE(SUM(gross_profit), 0) as daily_profit, COUNT(*) as count
+       FROM sales_invoices WHERE status = 'COMPLETED' AND date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+       GROUP BY date ORDER BY date ASC`
+    );
+
+    // 6. Recent Sales Invoices
+    const [recentSales]: any = await pool.query(
+      `SELECT id, invoice_number, date, customer_name, net_total, payment_type, status, created_at
+       FROM sales_invoices ORDER BY created_at DESC LIMIT 5`
+    );
+
+    // 7. Recent System Activity
+    const [recentLogs]: any = await pool.query(
+      `SELECT id, timestamp, user, action, module, details FROM audit_logs ORDER BY created_at DESC LIMIT 6`
+    );
+
+    // 8. Low stock alert items list
+    const [lowStockItems]: any = await pool.query(
+      `SELECT id, code, name, category, current_stock, min_stock, buy_price, sell_price, warehouse
+       FROM products WHERE current_stock <= min_stock ORDER BY current_stock ASC LIMIT 5`
+    );
+
+    res.json({
+      success: true,
+      stats: {
+        salesToday: salesToday[0] || { count: 0, total: 0, paid: 0, profit: 0 },
+        salesMonth: salesMonth[0] || { count: 0, total: 0, profit: 0 },
+        quotations: quotations[0] || { count: 0, total: 0 },
+        inventory: products[0] || { total_items: 0, total_units: 0, inventory_cost_valuation: 0, inventory_sell_valuation: 0, low_stock_count: 0, out_of_stock_count: 0 },
+        accounts,
+        totalLiquidity,
+        customers: customers[0] || { count: 0, total_receivables: 0 },
+        suppliers: suppliers[0] || { count: 0, total_payables: 0 },
+        recentDaysTrend: recentDays || [],
+        recentSales: recentSales || [],
+        recentLogs: recentLogs || [],
+        lowStockItems: lowStockItems || []
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Setup Vite development or production static files
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
