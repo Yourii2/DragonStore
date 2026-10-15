@@ -346,7 +346,7 @@ export default function App() {
             )}
 
             {activeTab === 'settings_update' && (
-              <UpdateSettingsView />
+              <UpdateSettingsView onFactoryReset={handleReinstall} />
             )}
 
             {activeTab === 'settings' && (

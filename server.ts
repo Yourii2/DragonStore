@@ -536,10 +536,152 @@ app.post('/api/system/install', async (req, res) => {
   }
 });
 
+// Helper function to create an automated snapshot backup of MySQL database
+async function createAutoBackup(reason: string): Promise<any> {
+  const pool = getPool();
+  if (!pool) return null;
+  const tables = [
+    'users', 'warehouses', 'product_categories', 'products', 
+    'customers', 'suppliers', 'accounts', 'employees',
+    'sales_invoices', 'stock_movements', 'customer_transactions', 'supplier_transactions',
+    'employee_transactions', 'financial_transactions', 'audit_logs', 'system_settings',
+    'expenses', 'journal_entries', 'maintenance_orders', 'network_projects', 'cctv_projects',
+    'internet_subscribers', 'freelance_projects'
+  ];
+
+  const backupData: { [key: string]: any[] } = {};
+  for (const table of tables) {
+    try {
+      const [rows]: any = await pool.query(`SELECT * FROM \`${table}\``);
+      backupData[table] = rows;
+    } catch (e) {
+      backupData[table] = [];
+    }
+  }
+
+  const payload = {
+    system: 'DragonStore ERP',
+    exportedAt: new Date().toISOString(),
+    version: '2.0.0',
+    reason,
+    data: backupData
+  };
+
+  try {
+    const backupDir = path.join(__dirname, 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    const filename = `autobackup_${reason}_${Date.now()}.json`;
+    fs.writeFileSync(path.join(backupDir, filename), JSON.stringify(payload, null, 2), 'utf-8');
+  } catch (fsErr) {
+    console.error('Failed to write backup file to disk:', fsErr);
+  }
+
+  return payload;
+}
+
+// -------------------------------------------------------------
+// Zero Counters (تصفير العدادات والمعاملات والأرصدة والكميات)
+// -------------------------------------------------------------
+app.post('/api/system/zero-counters', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+
+  try {
+    // 1. Take automatic backup before any deletion
+    const backup = await createAutoBackup('zero_counters');
+
+    const conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    try {
+      // 2. Clear all transaction & movement tables
+      const tablesToClear = [
+        'sales_invoices',
+        'stock_movements',
+        'customer_transactions',
+        'supplier_transactions',
+        'employee_transactions',
+        'financial_transactions',
+        'expenses',
+        'journal_entries',
+        'maintenance_orders'
+      ];
+
+      for (const table of tablesToClear) {
+        try {
+          await conn.query(`DELETE FROM \`${table}\``);
+        } catch (tblErr: any) {
+          console.warn(`Could not clear table ${table}:`, tblErr.message);
+        }
+      }
+
+      // 3. Reset product quantities to 0 (keep products, categories, prices, codes)
+      await conn.query('UPDATE products SET current_stock = 0');
+
+      // 4. Reset warehouse statistics to 0 (keep warehouse names and info)
+      await conn.query('UPDATE warehouses SET total_items = 0, total_valuation = 0.00');
+
+      // 5. Reset customers balance & invoice counts to 0 (keep customers info)
+      await conn.query('UPDATE customers SET balance = 0.00, total_invoices = 0');
+
+      // 6. Reset suppliers balance & purchase totals to 0 (keep suppliers info)
+      await conn.query('UPDATE suppliers SET balance = 0.00, total_purchases = 0.00');
+
+      // 7. Reset employee commissions and advances to 0, reset net_payable to base_salary (keep employees & salaries)
+      await conn.query('UPDATE employees SET commissions = 0.00, advances = 0.00, net_payable = base_salary');
+
+      // 8. Reset all treasuries / accounts balances to 0 (keep accounts and codes)
+      await conn.query('UPDATE accounts SET balance = 0.00');
+
+      // 9. Log this action in audit_logs
+      await conn.query(
+        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
+         VALUES (?, ?, 'المدير العام', 'تصفير العدادات', 'إعدادات النظام', 'all', ?)`,
+        [`log-${Date.now()}`, new Date().toISOString(), 'تم تصفير جميع المعاملات والمبيعات وكميات المخزون والأرصدة مع الاحتفاظ بالبيانات الأساسية وأخذ نسخة احتياطية تلقائية']
+      );
+
+      await conn.commit();
+      conn.release();
+
+      res.json({
+        success: true,
+        message: 'تم تصفير جميع العدادات والمعاملات والأرصدة بنجاح، وتم أخذ نسخة احتياطية من البيانات.',
+        backup
+      });
+    } catch (err: any) {
+      await conn.rollback();
+      conn.release();
+      throw err;
+    }
+  } catch (error: any) {
+    console.error('Zero counters error:', error);
+    res.status(500).json({ success: false, message: 'فشلت عملية تصفير العدادات: ' + error.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Factory Reset (إعادة ضبط المصنع بالكامل)
+// -------------------------------------------------------------
 app.post('/api/system/reset', async (req, res) => {
-  resetPool();
-  saveConfigFile({ isInstalled: false });
-  res.json({ success: true, message: 'System reset to uninstalled state' });
+  try {
+    // 1. Take automatic backup before wiping
+    const backup = await createAutoBackup('factory_reset');
+
+    resetPool();
+    saveConfigFile({ isInstalled: false });
+    
+    res.json({ 
+      success: true, 
+      message: 'تمت إعادة ضبط المصنع بنجاح، وتم حفظ نسخة احتياطية تلقائية للبيانات السابقة.',
+      backup 
+    });
+  } catch (err: any) {
+    resetPool();
+    saveConfigFile({ isInstalled: false });
+    res.json({ success: true, message: 'System reset to uninstalled state' });
+  }
 });
 
 // -------------------------------------------------------------
