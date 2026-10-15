@@ -1,0 +1,6 @@
+{
+  "name": "نظام الإدارة المحاسبية المزدوج (متجر التقنية والعمل الحر)",
+  "description": "وثيقة المعمارية الهندسية، المخطط المالي وقواعد بيانات MySQL الشاملة لإدارة متجر الحواسيب والشبكات والعمل الحر للبرمجيات.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

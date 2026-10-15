@@ -1,0 +1,305 @@
+// ========================================================================
+// نظام إدارة متجر دراغون والحلول البرمجية - DDL Tables & Seeds
+// ========================================================================
+
+export const INIT_MYSQL_TABLES_SQL = `
+CREATE TABLE IF NOT EXISTS system_settings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  setting_key VARCHAR(100) NOT NULL UNIQUE,
+  setting_value LONGTEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  email VARCHAR(150) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(150) NOT NULL,
+  phone VARCHAR(50) NULL,
+  role VARCHAR(50) NOT NULL DEFAULT 'SUPER_ADMIN',
+  role_title_ar VARCHAR(100) NOT NULL DEFAULT 'المدير العام والمالك',
+  accessible_units VARCHAR(100) NOT NULL DEFAULT 'BOTH',
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS warehouses (
+  id VARCHAR(50) PRIMARY KEY,
+  code VARCHAR(50) NOT NULL UNIQUE,
+  name VARCHAR(150) NOT NULL,
+  keeper_name VARCHAR(150) NOT NULL,
+  location VARCHAR(200) NOT NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'MAIN_STORE',
+  total_items INT DEFAULT 0,
+  total_valuation DECIMAL(14, 2) DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS products (
+  id VARCHAR(50) PRIMARY KEY,
+  code VARCHAR(50) NOT NULL UNIQUE,
+  barcode VARCHAR(50) NULL,
+  name VARCHAR(255) NOT NULL,
+  category VARCHAR(100) NOT NULL,
+  product_type VARCHAR(50) NOT NULL DEFAULT 'PHYSICAL', -- 'PHYSICAL' (منتج مادي), 'SERVICE' (خدمة / عمل), 'DIGITAL' (منتج رقمي / برمجية)
+  unit VARCHAR(30) NOT NULL DEFAULT 'قطعة',
+  buy_price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  sell_price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  min_sell_price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  is_variable_price TINYINT(1) NOT NULL DEFAULT 0,
+  is_variable_cost TINYINT(1) NOT NULL DEFAULT 0,
+  current_stock INT NOT NULL DEFAULT 0,
+  min_stock INT NOT NULL DEFAULT 3,
+  warehouse VARCHAR(150) NOT NULL DEFAULT 'مخزن المتجر الرئيسي',
+  has_serial TINYINT(1) NOT NULL DEFAULT 0,
+  business_unit VARCHAR(50) NOT NULL DEFAULT 'SHOP',
+  serial_numbers JSON NULL,
+  image_data LONGTEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS customers (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  phone VARCHAR(50) NOT NULL,
+  email VARCHAR(150) NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'RETAIL',
+  balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  credit_limit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  total_invoices INT NOT NULL DEFAULT 0,
+  address VARCHAR(255) NULL,
+  business_unit VARCHAR(50) NOT NULL DEFAULT 'SHOP',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS suppliers (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  company VARCHAR(200) NOT NULL,
+  phone VARCHAR(50) NOT NULL,
+  email VARCHAR(150) NULL,
+  category VARCHAR(100) NOT NULL,
+  balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  total_purchases DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+  payment_terms VARCHAR(100) NOT NULL DEFAULT 'نقدي',
+  address VARCHAR(255) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS employees (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  job_title VARCHAR(150) NOT NULL,
+  department VARCHAR(100) NOT NULL,
+  phone VARCHAR(50) NOT NULL,
+  email VARCHAR(150) NULL,
+  base_salary DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  commissions DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  advances DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  net_payable DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  business_unit VARCHAR(50) NOT NULL DEFAULT 'SHOP',
+  status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+  hire_date DATE NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS accounts (
+  id VARCHAR(50) PRIMARY KEY,
+  account_code VARCHAR(30) NOT NULL UNIQUE,
+  name VARCHAR(200) NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  unit VARCHAR(50) NOT NULL DEFAULT 'BOTH',
+  balance DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sales_invoices (
+  id VARCHAR(50) PRIMARY KEY,
+  invoice_number VARCHAR(50) NOT NULL UNIQUE,
+  date DATE NOT NULL,
+  customer_id VARCHAR(50) NOT NULL,
+  customer_name VARCHAR(200) NOT NULL,
+  business_unit_id INT NOT NULL DEFAULT 1,
+  items JSON NOT NULL,
+  subtotal DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  discount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  net_total DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  cogs_total DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  gross_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  payment_type VARCHAR(50) NOT NULL DEFAULT 'CASH',
+  paid_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  remaining_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  status VARCHAR(50) NOT NULL DEFAULT 'COMPLETED',
+  journal_entry_id VARCHAR(50) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS maintenance_orders (
+  id VARCHAR(50) PRIMARY KEY,
+  order_number VARCHAR(50) NOT NULL UNIQUE,
+  customer_name VARCHAR(200) NOT NULL,
+  customer_phone VARCHAR(50) NOT NULL,
+  device_type VARCHAR(100) NOT NULL,
+  brand_model VARCHAR(150) NOT NULL,
+  serial_number VARCHAR(100) NULL,
+  problem_description TEXT NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'RECEIVED',
+  technician_name VARCHAR(150) NOT NULL,
+  parts_used JSON NULL,
+  labor_cost DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  paid_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  received_date DATE NOT NULL,
+  delivery_date DATE NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS cctv_projects (
+  id VARCHAR(50) PRIMARY KEY,
+  project_name VARCHAR(200) NOT NULL,
+  customer_name VARCHAR(200) NOT NULL,
+  customer_phone VARCHAR(50) NOT NULL,
+  cameras_count INT NOT NULL DEFAULT 4,
+  dvr_type VARCHAR(100) NOT NULL,
+  total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  paid_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  status VARCHAR(50) NOT NULL DEFAULT 'PLANNING',
+  start_date DATE NOT NULL,
+  target_date DATE NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS network_projects (
+  id VARCHAR(50) PRIMARY KEY,
+  project_name VARCHAR(200) NOT NULL,
+  client_name VARCHAR(200) NOT NULL,
+  scope_description TEXT NOT NULL,
+  hardware_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  installation_fees DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  total_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  paid_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS internet_subscribers (
+  id VARCHAR(50) PRIMARY KEY,
+  subscriber_name VARCHAR(200) NOT NULL,
+  phone VARCHAR(50) NOT NULL,
+  ip_address VARCHAR(50) NULL,
+  package_name VARCHAR(100) NOT NULL,
+  monthly_fee DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  due_day INT NOT NULL DEFAULT 1,
+  status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+  router_mac VARCHAR(50) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS freelance_projects (
+  id VARCHAR(50) PRIMARY KEY,
+  title VARCHAR(200) NOT NULL,
+  client_name VARCHAR(200) NOT NULL,
+  client_country VARCHAR(100) NOT NULL DEFAULT 'مصر',
+  contract_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  currency VARCHAR(10) NOT NULL DEFAULT 'EGP',
+  status VARCHAR(50) NOT NULL DEFAULT 'IN_PROGRESS',
+  start_date DATE NOT NULL,
+  milestones JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id VARCHAR(50) PRIMARY KEY,
+  title VARCHAR(200) NOT NULL,
+  category VARCHAR(100) NOT NULL,
+  date DATE NOT NULL,
+  amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  type VARCHAR(50) NOT NULL DEFAULT 'SHARED_DEFAULT',
+  allocation_ratio VARCHAR(50) NOT NULL DEFAULT '70_30',
+  shop_portion DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  freelance_portion DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  payment_account VARCHAR(100) NOT NULL DEFAULT 'CASHBOX',
+  journal_entry_id VARCHAR(50) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id VARCHAR(50) PRIMARY KEY,
+  entry_number VARCHAR(50) NOT NULL UNIQUE,
+  date DATE NOT NULL,
+  business_unit_id INT NOT NULL DEFAULT 1,
+  description TEXT NOT NULL,
+  entry_lines JSON NOT NULL,
+  reference_type VARCHAR(50) NULL,
+  reference_id VARCHAR(50) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id VARCHAR(50) PRIMARY KEY,
+  timestamp VARCHAR(50) NOT NULL,
+  user VARCHAR(150) NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  module VARCHAR(100) NOT NULL,
+  table_name VARCHAR(100) NOT NULL,
+  details TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS product_categories (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL UNIQUE,
+  description TEXT NULL,
+  image_url LONGTEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id VARCHAR(50) PRIMARY KEY,
+  reference_no VARCHAR(50) NOT NULL,
+  movement_type VARCHAR(50) NOT NULL, -- 'IN', 'OUT', 'TRANSFER', 'RETURN', 'INITIAL'
+  product_id VARCHAR(50) NOT NULL,
+  product_name VARCHAR(255) NOT NULL,
+  quantity INT NOT NULL,
+  unit_price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  total_price DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+  source_warehouse VARCHAR(150) NULL,
+  target_warehouse VARCHAR(150) NULL,
+  notes TEXT NULL,
+  created_by VARCHAR(150) NOT NULL DEFAULT 'admin',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS customer_transactions (
+  id VARCHAR(50) PRIMARY KEY,
+  customer_id VARCHAR(50) NOT NULL,
+  customer_name VARCHAR(200) NOT NULL,
+  transaction_type VARCHAR(50) NOT NULL,
+  reference_no VARCHAR(50) NOT NULL,
+  date DATE NOT NULL,
+  debit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  credit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  balance_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH',
+  notes TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS supplier_transactions (
+  id VARCHAR(50) PRIMARY KEY,
+  supplier_id VARCHAR(50) NOT NULL,
+  supplier_name VARCHAR(200) NOT NULL,
+  transaction_type VARCHAR(50) NOT NULL,
+  reference_no VARCHAR(50) NOT NULL,
+  date DATE NOT NULL,
+  debit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  credit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  balance_after DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH',
+  notes TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`;
