@@ -97,9 +97,17 @@ export const SalesAndPosView: React.FC = () => {
   // Cart & Invoice Form state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('WALK_IN');
+  // Payment & Treasury state
+  // Types: 'CASH' (خزينة نقدية), 'INSTAPAY' (حساب بنكي), 'WALLET' (محفظة إلكترونية), 'SPLIT' (تقسيم الدفع), 'CREDIT' (آجل / على الحساب)
+  const [paymentType, setPaymentType] = useState<'CASH' | 'INSTAPAY' | 'WALLET' | 'SPLIT' | 'CREDIT'>('CASH');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
-  const [paymentType, setPaymentType] = useState<'CASH' | 'CREDIT' | 'BANK' | 'INSTAPAY'>('CASH');
   const [paidAmount, setPaidAmount] = useState<number>(0);
+  
+  // Split payment state: Cash part vs Electronic/Bank part
+  const [splitCashAmount, setSplitCashAmount] = useState<number>(0);
+  const [splitCashAccountId, setSplitCashAccountId] = useState<string>('');
+  const [splitDigitalAmount, setSplitDigitalAmount] = useState<number>(0);
+  const [splitDigitalAccountId, setSplitDigitalAccountId] = useState<string>('');
   const [discountType, setDiscountType] = useState<'AMOUNT' | 'PERCENT'>('AMOUNT');
   const [discountVal, setDiscountVal] = useState<number>(0);
   const [invoiceNotes, setInvoiceNotes] = useState<string>('');
@@ -350,15 +358,62 @@ export const SalesAndPosView: React.FC = () => {
   const netTotal = Math.max(0, subtotal - calculatedDiscount);
   const grossProfit = Math.max(0, netTotal - totalCost);
   const remainingAmount = Math.max(0, netTotal - paidAmount);
+  // Categorize accounts by code or name
+  // 1. الخزائن النقدية (الكاش): كود 111 أو اسم يحتوي على خزينة / نقدية / كاش
+  const cashAccounts = accounts.filter(a => a.account_code?.startsWith('111') || a.name?.includes('خزينة') || a.name?.includes('كاش'));
+  // 2. الحسابات البنكية (إنستاباي / بنك): كود 112 أو اسم يحتوي على بنك / CIB / بنكي
+  const bankAccounts = accounts.filter(a => a.account_code?.startsWith('112') || a.name?.includes('بنك') || a.name?.includes('حساب'));
+  // 3. المحافظ الإلكترونية: كود 113 أو اسم يحتوي على محفظة / فودافون / كاش / إلكتروني
+  const walletAccounts = accounts.filter(a => a.account_code?.startsWith('113') || a.name?.includes('محفظة') || a.name?.includes('فودافون'));
+  // 4. الحسابات البنكية والمحافظ معاً لخيار التقسيم أو الدفع الرقمي
+  const digitalAccounts = accounts.filter(a => !a.account_code?.startsWith('111') || a.name?.includes('بنك') || a.name?.includes('محفظة'));
 
-  // Keep paidAmount synced with netTotal for Cash / Bank payments by default
+  // Keep accounts selected on payment type switch
   useEffect(() => {
-    if (paymentType === 'CASH' || paymentType === 'BANK' || paymentType === 'INSTAPAY') {
+    if (paymentType === 'CASH') {
+      if (cashAccounts.length > 0 && (!selectedAccountId || !cashAccounts.some(a => a.id === selectedAccountId))) {
+        setSelectedAccountId(cashAccounts[0].id);
+      }
+      setPaidAmount(netTotal);
+    } else if (paymentType === 'INSTAPAY') {
+      if (bankAccounts.length > 0 && (!selectedAccountId || !bankAccounts.some(a => a.id === selectedAccountId))) {
+        setSelectedAccountId(bankAccounts[0].id);
+      }
+      setPaidAmount(netTotal);
+    } else if (paymentType === 'WALLET') {
+      if (walletAccounts.length > 0 && (!selectedAccountId || !walletAccounts.some(a => a.id === selectedAccountId))) {
+        setSelectedAccountId(walletAccounts[0].id);
+      }
+      setPaidAmount(netTotal);
+    } else if (paymentType === 'SPLIT') {
+      if (cashAccounts.length > 0 && !splitCashAccountId) {
+        setSplitCashAccountId(cashAccounts[0].id);
+      }
+      if (digitalAccounts.length > 0 && !splitDigitalAccountId) {
+        setSplitDigitalAccountId(digitalAccounts[0].id);
+      }
+      // Initialize half or remaining
+      const half = Math.round(netTotal / 2);
+      setSplitCashAmount(half);
+      setSplitDigitalAmount(Math.max(0, netTotal - half));
       setPaidAmount(netTotal);
     } else if (paymentType === 'CREDIT') {
       setPaidAmount(0);
     }
-  }, [netTotal, paymentType]);
+  }, [paymentType, netTotal, accounts]);
+
+  // When split amounts change, update total paid
+  const handleSplitCashChange = (val: number) => {
+    setSplitCashAmount(val);
+    const rest = Math.max(0, netTotal - val);
+    setSplitDigitalAmount(rest);
+    setPaidAmount(val + rest);
+  };
+
+  const handleSplitDigitalChange = (val: number) => {
+    setSplitDigitalAmount(val);
+    setPaidAmount(splitCashAmount + val);
+  };
 
   // Suspend current cart (Hold Invoice)
   const handleSuspendCart = () => {
@@ -401,16 +456,28 @@ export const SalesAndPosView: React.FC = () => {
     const cust = customers.find(c => c.id === selectedCustomerId);
     const custName = cust ? cust.name : 'عميل نقدي / عام';
 
-    // Credit validation
+    // Credit validation - strict check
     if (docMode === 'SALE' && (paymentType === 'CREDIT' || remainingAmount > 0)) {
-      if (selectedCustomerId === 'WALK_IN') {
-        alert('لا يمكن إجراء بيع آجل أو متبقي على حساب عميل نقدي عام! يرجى اختيار عميل مسجل.');
+      if (!selectedCustomerId || selectedCustomerId === 'WALK_IN') {
+        alert('ممنوع البيع الآجل أو تسجيل متبقي على الحساب بدون اختيار عميل مسجل من القائمة!');
         return;
       }
       if (cust && cust.credit_limit > 0 && (Number(cust.balance) + remainingAmount) > cust.credit_limit) {
-        if (!window.confirm(`تنبيه: مديونية العميل بعد هذه الفاتورة (${Number(cust.balance) + remainingAmount} ج.م) ستتجاوز الحد الائتماني المسموح به (${cust.credit_limit} ج.م). هل تريد المتابعة؟`)) {
+        if (!window.confirm(`تنبيه: مديونية العميل بعد هذه الفاتورة (${(Number(cust.balance) + remainingAmount).toLocaleString()} ج.م) ستتجاوز الحد الائتماني المسموح به (${cust.credit_limit.toLocaleString()} ج.م). هل تريد المتابعة؟`)) {
           return;
         }
+      }
+    }
+
+    // Split payments payload preparation
+    let splitList: Array<{ account_id: string; amount: number; method: string }> | undefined = undefined;
+    if (docMode === 'SALE' && paymentType === 'SPLIT') {
+      splitList = [];
+      if (splitCashAmount > 0 && splitCashAccountId) {
+        splitList.push({ account_id: splitCashAccountId, amount: splitCashAmount, method: 'نقدية / كاش' });
+      }
+      if (splitDigitalAmount > 0 && splitDigitalAccountId) {
+        splitList.push({ account_id: splitDigitalAccountId, amount: splitDigitalAmount, method: 'بنك / محفظة' });
       }
     }
 
@@ -425,7 +492,8 @@ export const SalesAndPosView: React.FC = () => {
       cogs_total: totalCost,
       gross_profit: grossProfit,
       payment_type: paymentType,
-      account_id: selectedAccountId,
+      account_id: paymentType === 'SPLIT' ? splitCashAccountId : selectedAccountId,
+      split_payments: splitList,
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
       status: docMode === 'QUOTATION' ? 'QUOTATION' : 'COMPLETED',
@@ -1038,72 +1106,191 @@ export const SalesAndPosView: React.FC = () => {
 
             {/* Payment Details (Only for Sale Mode) */}
             {docMode === 'SALE' && (
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                {/* Payment Method */}
-                <div className="grid grid-cols-4 gap-1.5 text-[11px] font-bold">
-                  {[
-                    { id: 'CASH', label: 'كاش / نقدية' },
-                    { id: 'BANK', label: 'شبكة / بنك' },
-                    { id: 'INSTAPAY', label: 'إنستاباي' },
-                    { id: 'CREDIT', label: 'آجل / حساب' }
-                  ].map(m => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setPaymentType(m.id as any)}
-                      className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer ${
-                        paymentType === m.id
-                          ? 'bg-cyan-600 text-white border-cyan-600 shadow-xs'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+                {/* Payment Method Selector */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">طريقة الدفع والتحصيل:</label>
+                  <div className="grid grid-cols-5 gap-1 text-[10px] font-bold">
+                    {[
+                      { id: 'CASH', label: 'كاش' },
+                      { id: 'INSTAPAY', label: 'إنستاباي' },
+                      { id: 'WALLET', label: 'محفظة' },
+                      { id: 'SPLIT', label: 'تقسيم' },
+                      { id: 'CREDIT', label: 'آجل' }
+                    ].map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPaymentType(m.id as any)}
+                        className={`py-1.5 px-1 rounded-xl border text-center transition-all cursor-pointer ${
+                          paymentType === m.id
+                            ? 'bg-cyan-600 text-white border-cyan-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Treasury / Account selector (if not purely CREDIT) */}
-                {paymentType !== 'CREDIT' && (
+                {/* 1. كاش: قائمة بالخزائن النقدية */}
+                {paymentType === 'CASH' && (
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1">إيداع النقدية في خزينة / حساب:</label>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">الخزينة النقدية المستلمة:</label>
                     <select
                       value={selectedAccountId}
                       onChange={e => setSelectedAccountId(e.target.value)}
                       className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none"
                     >
-                      {accounts.map(acc => (
-                        <option key={acc.id} value={acc.id}>{acc.name} (رصيد: {Number(acc.balance).toLocaleString()} ج.م)</option>
-                      ))}
+                      {cashAccounts.length > 0 ? (
+                        cashAccounts.map(acc => (
+                          <option key={acc.id} value={acc.id}>{acc.name} (رصيد: {Number(acc.balance).toLocaleString()} ج.م)</option>
+                        ))
+                      ) : (
+                        <option value="">لا توجد خزائن نقدية متاحة</option>
+                      )}
                     </select>
                   </div>
                 )}
 
-                {/* Paid & Remaining */}
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                {/* 2. إنستاباي: قائمة بالحسابات البنكية */}
+                {paymentType === 'INSTAPAY' && (
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">المدفوع الآن:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={paidAmount}
-                      onChange={e => setPaidAmount(Number(e.target.value))}
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 text-center font-mono font-bold focus:outline-none"
-                    />
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">الحساب البنكي (إنستاباي / تحويل):</label>
+                    <select
+                      value={selectedAccountId}
+                      onChange={e => setSelectedAccountId(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none"
+                    >
+                      {bankAccounts.length > 0 ? (
+                        bankAccounts.map(acc => (
+                          <option key={acc.id} value={acc.id}>{acc.name} (رصيد: {Number(acc.balance).toLocaleString()} ج.م)</option>
+                        ))
+                      ) : (
+                        <option value="">لا توجد حسابات بنكية مسجلة</option>
+                      )}
+                    </select>
                   </div>
+                )}
+
+                {/* 3. محفظة إلكترونية: قائمة بالمحافظ الإلكترونية */}
+                {paymentType === 'WALLET' && (
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">المتبقي على الحساب:</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={`${remainingAmount.toLocaleString()} ج.م`}
-                      className={`w-full border rounded-xl p-1.5 text-center font-mono font-bold ${
-                        remainingAmount > 0 
-                          ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-500/40 text-rose-500' 
-                          : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-400'
-                      }`}
-                    />
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">المحفظة الإلكترونية المستلمة (فودافون كاش / وغيرها):</label>
+                    <select
+                      value={selectedAccountId}
+                      onChange={e => setSelectedAccountId(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none"
+                    >
+                      {walletAccounts.length > 0 ? (
+                        walletAccounts.map(acc => (
+                          <option key={acc.id} value={acc.id}>{acc.name} (رصيد: {Number(acc.balance).toLocaleString()} ج.م)</option>
+                        ))
+                      ) : (
+                        <option value="">لا توجد محافظ إلكترونية مسجلة</option>
+                      )}
+                    </select>
                   </div>
-                </div>
+                )}
+
+                {/* 4. خيار تقسيم الدفع (كاش + إنستاباي / محفظة) */}
+                {paymentType === 'SPLIT' && (
+                  <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900/90 border border-cyan-500/30 space-y-2">
+                    <div className="text-[10px] font-black text-cyan-600 dark:text-cyan-400">
+                      ⚖️ تقسيم المبلغ بين نقدية (كاش) وإلكتروني (بنك / محفظة):
+                    </div>
+
+                    {/* الجزء النقدي */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 mb-0.5">مبلغ الكاش (ج.م):</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max={netTotal}
+                          value={splitCashAmount}
+                          onChange={e => handleSplitCashChange(Number(e.target.value))}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg p-1 text-center font-mono font-bold text-xs focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 mb-0.5">إيداع كاش في الخزينة:</label>
+                        <select
+                          value={splitCashAccountId}
+                          onChange={e => setSplitCashAccountId(e.target.value)}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg p-1 text-[11px] font-bold focus:outline-none"
+                        >
+                          {cashAccounts.map(acc => (
+                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* الجزء الإلكتروني (حساب بنكي أو محفظة) */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 mb-0.5">المتبقي إلكتروني (ج.م):</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={splitDigitalAmount}
+                          onChange={e => handleSplitDigitalChange(Number(e.target.value))}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg p-1 text-center font-mono font-bold text-xs focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 mb-0.5">إيداع في بنك / محفظة:</label>
+                        <select
+                          value={splitDigitalAccountId}
+                          onChange={e => setSplitDigitalAccountId(e.target.value)}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg p-1 text-[11px] font-bold focus:outline-none"
+                        >
+                          {digitalAccounts.map(acc => (
+                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. آجل: تنبيه باختيار العميل */}
+                {paymentType === 'CREDIT' && (
+                  <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-600 dark:text-amber-400 font-bold">
+                    ⚠️ بيع آجل بالكامل: سيتم ترحيل كامل الفاتورة ({netTotal.toLocaleString()} ج.م) كمديونية على حساب العميل المختار.
+                  </div>
+                )}
+
+                {/* Paid & Remaining display */}
+                {paymentType !== 'SPLIT' && (
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">المدفوع الآن:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={paidAmount}
+                        onChange={e => setPaidAmount(Number(e.target.value))}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 text-center font-mono font-bold focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">المتبقي على الحساب:</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={`${remainingAmount.toLocaleString()} ج.م`}
+                        className={`w-full border rounded-xl p-1.5 text-center font-mono font-bold ${
+                          remainingAmount > 0 
+                            ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-500/40 text-rose-500' 
+                            : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-400'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

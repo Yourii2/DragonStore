@@ -2389,7 +2389,39 @@ app.post('/api/sales', async (req, res) => {
 
       // 3. Update Treasury / Account Balance if paid amount > 0
       const actualPaid = Number(paid_amount || 0);
-      if (actualPaid > 0 && account_id) {
+      const splitPayments = req.body.split_payments; // Array<{ account_id: string; amount: number; method?: string }>
+
+      if (Array.isArray(splitPayments) && splitPayments.length > 0) {
+        for (const sp of splitPayments) {
+          const spAmt = Number(sp.amount || 0);
+          if (spAmt > 0 && sp.account_id) {
+            const [accRows]: any = await conn.query('SELECT balance, name FROM accounts WHERE id = ?', [sp.account_id]);
+            if (accRows.length > 0) {
+              const newAccBalance = Number(accRows[0].balance || 0) + spAmt;
+              await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newAccBalance, sp.account_id]);
+
+              const ftxId = `ftx-sale-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+              await conn.query(
+                `INSERT INTO financial_transactions (
+                  id, reference_no, date, type, account_id, account_name,
+                  amount, balance_after, party_type, party_name, description, created_by
+                ) VALUES (?, ?, ?, 'INCOME', ?, ?, ?, ?, 'CUSTOMER', ?, ?, 'كاشير ومبيعات')`,
+                [
+                  ftxId,
+                  invNumber,
+                  invDate,
+                  sp.account_id,
+                  accRows[0].name,
+                  spAmt,
+                  newAccBalance,
+                  customer_name || 'عميل نقدي',
+                  `تحصيل مبيعات (${sp.method || 'دفعة مقسمة'}) فاتورة رقم: ${invNumber}`
+                ]
+              );
+            }
+          }
+        }
+      } else if (actualPaid > 0 && account_id) {
         const [accRows]: any = await conn.query('SELECT balance, name FROM accounts WHERE id = ?', [account_id]);
         if (accRows.length > 0) {
           const newAccBalance = Number(accRows[0].balance || 0) + actualPaid;
