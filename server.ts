@@ -2525,21 +2525,27 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    // Find local network IP address
-    let lanIp = '127.0.0.1';
+    console.log(`\n  ➜  Local:   http://localhost:${PORT}/`);
+
+    // List all active IPv4 interfaces
     const nets = os.networkInterfaces();
     for (const name of Object.keys(nets)) {
       for (const net of nets[name] || []) {
         if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254')) {
-          lanIp = net.address;
-          break;
+          const label = name.toLowerCase().includes('tailscale') 
+            ? 'VPN (Tailscale)' 
+            : name.toLowerCase().includes('ethernet') 
+            ? 'LAN (Ethernet)' 
+            : name.toLowerCase().includes('wi-fi') || name.toLowerCase().includes('wireless')
+            ? 'Wi-Fi'
+            : name;
+          console.log(`  ➜  ${label.padEnd(15)}: http://${net.address}:${PORT}/`);
         }
       }
     }
 
-    console.log(`\n  ➜  Local:   http://localhost:${PORT}/`);
-    console.log(`  ➜  Network: http://${lanIp}:${PORT}/\n`);
-    console.log(`Enterprise System running with MySQL Core on port ${PORT}`);
+    console.log(`  ➜  Cloudflare     : يعمل عبر نفق Cloudflare Tunnel المشغل بالخلفية`);
+    console.log(`\nEnterprise System running with MySQL Core on port ${PORT}`);
   });
 }
 
