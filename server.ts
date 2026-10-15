@@ -2170,14 +2170,246 @@ app.post('/api/alerts/mark-read', (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/alerts/simulate-stock', async (req, res) => {
+// -------------------------------------------------------------
+// Sales Invoices & Quotations API
+// -------------------------------------------------------------
+
+// Get Sales Invoices / Quotations
+app.get('/api/sales', async (req, res) => {
   const pool = getPool();
-  if (!pool) return res.status(500).json({ success: false });
-  const { code, delta } = req.body;
-  if (code) {
-    await pool.query('UPDATE products SET current_stock = GREATEST(0, current_stock + ?) WHERE code = ?', [delta || -1, code]);
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const { status, customerId, fromDate, toDate } = req.query;
+    let query = 'SELECT * FROM sales_invoices WHERE 1=1';
+    const params: any[] = [];
+
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+    if (customerId && customerId !== 'ALL') {
+      query += ' AND customer_id = ?';
+      params.push(customerId);
+    }
+    if (fromDate) {
+      query += ' AND date >= ?';
+      params.push(fromDate);
+    }
+    if (toDate) {
+      query += ' AND date <= ?';
+      params.push(toDate);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT 200';
+    const [rows]: any = await pool.query(query, params);
+    
+    // Parse items JSON safely
+    const data = rows.map((r: any) => ({
+      ...r,
+      items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
+    }));
+
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
   }
-  res.json({ success: true });
+});
+
+// Create Sales Invoice or Quotation
+app.post('/api/sales', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+
+  const conn = await pool.getConnection();
+  try {
+    const {
+      id,
+      invoice_number,
+      customer_id,
+      customer_name,
+      date,
+      items,
+      subtotal,
+      discount,
+      net_total,
+      cogs_total,
+      gross_profit,
+      payment_type, // 'CASH', 'CREDIT', 'BANK', 'INSTAPAY'
+      account_id, // Treasury / Bank Account
+      paid_amount,
+      remaining_amount,
+      status, // 'COMPLETED' (فاتورة مبيعات) or 'QUOTATION' (عرض أسعار)
+      warehouse,
+      notes
+    } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      conn.release();
+      return res.status(400).json({ success: false, message: 'قائمة الأصناف فارغة' });
+    }
+
+    const invId = id || `inv-${Date.now()}`;
+    const invNumber = invoice_number || (status === 'QUOTATION' ? `QUO-${Date.now().toString().slice(-6)}` : `INV-${Date.now().toString().slice(-6)}`);
+    const invDate = date || new Date().toISOString().slice(0, 10);
+    const isQuotation = status === 'QUOTATION';
+
+    await conn.beginTransaction();
+
+    // 1. Insert Sales Invoice / Quotation record
+    await conn.query(
+      `INSERT INTO sales_invoices (
+        id, invoice_number, date, customer_id, customer_name,
+        business_unit_id, items, subtotal, discount, net_total,
+        cogs_total, gross_profit, payment_type, paid_amount,
+        remaining_amount, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      ON DUPLICATE KEY UPDATE
+        status = VALUES(status), items = VALUES(items), net_total = VALUES(net_total),
+        paid_amount = VALUES(paid_amount), remaining_amount = VALUES(remaining_amount)`,
+      [
+        invId,
+        invNumber,
+        invDate,
+        customer_id || 'WALK_IN',
+        customer_name || 'عميل نقدي / عام',
+        JSON.stringify(items),
+        Number(subtotal || net_total || 0),
+        Number(discount || 0),
+        Number(net_total || 0),
+        Number(cogs_total || 0),
+        Number(gross_profit || (net_total - cogs_total) || 0),
+        payment_type || 'CASH',
+        Number(paid_amount || 0),
+        Number(remaining_amount || 0),
+        status || 'COMPLETED'
+      ]
+    );
+
+    // If it's a real sale (NOT quotation), update stock, treasuries, customer balance, and log movement
+    if (!isQuotation) {
+      // 2. Deduct quantities from products and record stock movements
+      for (const item of items) {
+        const qty = Number(item.quantity || 1);
+        const prodId = item.product_id || item.id;
+        const unitPrice = Number(item.unit_price || item.sale_price || 0);
+        const unitCost = Number(item.unit_cost || item.purchase_price || 0);
+
+        // Deduct stock
+        if (prodId) {
+          await conn.query(
+            'UPDATE products SET current_stock = current_stock - ? WHERE id = ?',
+            [qty, prodId]
+          );
+
+          // Insert stock movement record
+          const movId = `mov-sale-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          await conn.query(
+            `INSERT INTO stock_movements (
+              id, reference_no, movement_type, product_id, product_name, 
+              quantity, unit_price, total_price, source_warehouse, target_warehouse, notes, created_by
+            ) VALUES (?, ?, 'OUT', ?, ?, ?, ?, ?, ?, NULL, ?, 'المدير العام')`,
+            [
+              movId,
+              invNumber,
+              prodId,
+              item.product_name || item.name || 'صنف مباع',
+              qty,
+              unitPrice,
+              qty * unitPrice,
+              warehouse || 'مخزن المتجر الرئيسي',
+              `فاتورة مبيعات رقم ${invNumber} للعميل: ${customer_name}`
+            ]
+          );
+        }
+      }
+
+      // 3. Update Treasury / Account Balance if paid amount > 0
+      const actualPaid = Number(paid_amount || 0);
+      if (actualPaid > 0 && account_id) {
+        const [accRows]: any = await conn.query('SELECT balance, name FROM accounts WHERE id = ?', [account_id]);
+        if (accRows.length > 0) {
+          const newAccBalance = Number(accRows[0].balance || 0) + actualPaid;
+          await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newAccBalance, account_id]);
+
+          // Insert financial transaction
+          const ftxId = `ftx-sale-${Date.now()}`;
+          await conn.query(
+            `INSERT INTO financial_transactions (
+              id, reference_no, date, type, account_id, account_name,
+              amount, balance_after, party_type, party_name, description, created_by
+            ) VALUES (?, ?, ?, 'INCOME', ?, ?, ?, ?, 'CUSTOMER', ?, ?, 'كاشير ومبيعات')`,
+            [
+              ftxId,
+              invNumber,
+              invDate,
+              account_id,
+              accRows[0].name,
+              actualPaid,
+              newAccBalance,
+              customer_name || 'عميل نقدي',
+              `تحصيل مبيعات فاتورة رقم: ${invNumber}`
+            ]
+          );
+        }
+      }
+
+      // 4. Update Customer Balance if credit / remaining > 0
+      const remaining = Number(remaining_amount || 0);
+      if (customer_id && customer_id !== 'WALK_IN' && (remaining > 0 || payment_type === 'CREDIT')) {
+        const [custRows]: any = await conn.query('SELECT balance, name, total_invoices FROM customers WHERE id = ?', [customer_id]);
+        if (custRows.length > 0) {
+          const currentCustBal = Number(custRows[0].balance || 0);
+          // Credit sale increases debt owed to us
+          const newCustBal = currentCustBal + remaining;
+          await conn.query(
+            'UPDATE customers SET balance = ?, total_invoices = total_invoices + 1 WHERE id = ?',
+            [newCustBal, customer_id]
+          );
+
+          // Insert customer transaction
+          const ctxId = `ctx-sale-${Date.now()}`;
+          await conn.query(
+            `INSERT INTO customer_transactions (
+              id, customer_id, customer_name, transaction_type, reference_no,
+              date, debit, credit, balance_after, payment_method, notes
+            ) VALUES (?, ?, ?, 'INVOICE', ?, ?, ?, 0, ?, ?, ?)`,
+            [
+              ctxId,
+              customer_id,
+              custRows[0].name,
+              invNumber,
+              invDate,
+              remaining,
+              newCustBal,
+              payment_type,
+              `متبقي فاتورة مبيعات رقم ${invNumber}`
+            ]
+          );
+        }
+      }
+
+      // 5. Audit Log
+      await conn.query(
+        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
+         VALUES (?, NOW(), 'المدير العام', 'فاتورة مبيعات', 'المبيعات والكاشير', 'sales_invoices', ?)`,
+        [`log-${Date.now()}`, `إصدار فاتورة مبيعات رقم ${invNumber} بقيمة ${net_total} ج.م للعميل ${customer_name}`]
+      );
+    }
+
+    await conn.commit();
+    conn.release();
+
+    res.json({
+      success: true,
+      id: invId,
+      invoice_number: invNumber,
+      message: isQuotation ? 'تم حفظ عرض السعر بنجاح' : 'تم إصدار وحفظ فاتورة المبيعات بنجاح'
+    });
+  } catch (err: any) {
+    await conn.rollback();
+    conn.release();
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // Setup Vite development or production static files
