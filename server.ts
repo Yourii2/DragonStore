@@ -2564,6 +2564,371 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// Advanced Comprehensive Reports Engine API
+// -------------------------------------------------------------
+app.get('/api/reports', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+
+  try {
+    const { 
+      type = 'sales', 
+      startDate, 
+      endDate, 
+      category, 
+      warehouse, 
+      paymentType, 
+      partyId, 
+      unit = 'all',
+      status 
+    } = req.query as Record<string, string>;
+
+    let resultData: any = {};
+
+    if (type === 'sales') {
+      // 1. Sales Report
+      let query = `
+        SELECT id, invoice_number, date, customer_id, customer_name, business_unit_id,
+               subtotal, discount, net_total, cogs_total, gross_profit, payment_type, paid_amount, remaining_amount, status, created_at, items
+        FROM sales_invoices
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (startDate) {
+        query += ' AND date >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ' AND date <= ?';
+        params.push(endDate);
+      }
+      if (paymentType && paymentType !== 'all') {
+        query += ' AND payment_type = ?';
+        params.push(paymentType);
+      }
+      if (status && status !== 'all') {
+        query += ' AND status = ?';
+        params.push(status);
+      }
+      if (partyId && partyId !== 'all') {
+        query += ' AND (customer_id = ? OR customer_name LIKE ?)';
+        params.push(partyId, `%${partyId}%`);
+      }
+      if (unit && unit !== 'all') {
+        const uId = unit === 'shop' ? 1 : 2;
+        query += ' AND business_unit_id = ?';
+        params.push(uId);
+      }
+
+      query += ' ORDER BY date DESC, created_at DESC';
+      const [rows]: any = await pool.query(query, params);
+
+      // Compute aggregated totals
+      const totals = rows.reduce(
+        (acc: any, row: any) => {
+          acc.count += 1;
+          acc.subtotal += Number(row.subtotal || 0);
+          acc.discount += Number(row.discount || 0);
+          acc.netTotal += Number(row.net_total || 0);
+          acc.cogsTotal += Number(row.cogs_total || 0);
+          acc.grossProfit += Number(row.gross_profit || 0);
+          acc.paidAmount += Number(row.paid_amount || 0);
+          acc.remainingAmount += Number(row.remaining_amount || 0);
+          return acc;
+        },
+        { count: 0, subtotal: 0, discount: 0, netTotal: 0, cogsTotal: 0, grossProfit: 0, paidAmount: 0, remainingAmount: 0 }
+      );
+
+      resultData = { rows, totals };
+    } 
+    else if (type === 'inventory') {
+      // 2. Inventory & Stock Valuation Report
+      let query = `
+        SELECT id, code, barcode, name, category, product_type, unit, buy_price, sell_price,
+               current_stock, min_stock, warehouse, business_unit,
+               (current_stock * buy_price) as stock_cost_value,
+               (current_stock * sell_price) as stock_sell_value,
+               (current_stock * (sell_price - buy_price)) as potential_profit
+        FROM products
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (category && category !== 'all') {
+        query += ' AND category = ?';
+        params.push(category);
+      }
+      if (warehouse && warehouse !== 'all') {
+        query += ' AND warehouse = ?';
+        params.push(warehouse);
+      }
+      if (status === 'low_stock') {
+        query += ' AND current_stock <= min_stock AND current_stock > 0';
+      } else if (status === 'out_of_stock') {
+        query += ' AND current_stock <= 0';
+      } else if (status === 'available') {
+        query += ' AND current_stock > min_stock';
+      }
+
+      query += ' ORDER BY current_stock ASC, name ASC';
+      const [rows]: any = await pool.query(query, params);
+
+      const totals = rows.reduce(
+        (acc: any, row: any) => {
+          acc.totalItems += 1;
+          acc.totalUnits += Number(row.current_stock || 0);
+          acc.totalCostValue += Number(row.stock_cost_value || 0);
+          acc.totalSellValue += Number(row.stock_sell_value || 0);
+          acc.totalPotentialProfit += Number(row.potential_profit || 0);
+          if (row.current_stock <= row.min_stock) acc.lowStockCount += 1;
+          return acc;
+        },
+        { totalItems: 0, totalUnits: 0, totalCostValue: 0, totalSellValue: 0, totalPotentialProfit: 0, lowStockCount: 0 }
+      );
+
+      resultData = { rows, totals };
+    }
+    else if (type === 'treasury') {
+      // 3. Treasury & Financial Transactions Report
+      let query = `
+        SELECT id, reference_no, date, transaction_type, account_id, account_name,
+               to_account_id, to_account_name, flow, amount, balance_after, category,
+               party_type, party_name, payment_method, notes, created_at
+        FROM financial_transactions
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (startDate) {
+        query += ' AND date >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ' AND date <= ?';
+        params.push(endDate);
+      }
+      if (paymentType && paymentType !== 'all') {
+        query += ' AND transaction_type = ?';
+        params.push(paymentType);
+      }
+      if (partyId && partyId !== 'all') {
+        query += ' AND account_id = ?';
+        params.push(partyId);
+      }
+
+      query += ' ORDER BY date DESC, created_at DESC';
+      const [rows]: any = await pool.query(query, params);
+
+      const totals = rows.reduce(
+        (acc: any, row: any) => {
+          acc.count += 1;
+          if (row.flow === 'IN' || row.transaction_type === 'RECEIPT') {
+            acc.totalIn += Number(row.amount || 0);
+          } else if (row.flow === 'OUT' || row.transaction_type === 'PAYMENT' || row.transaction_type === 'EXPENSE') {
+            acc.totalOut += Number(row.amount || 0);
+          }
+          acc.netCashFlow = acc.totalIn - acc.totalOut;
+          return acc;
+        },
+        { count: 0, totalIn: 0, totalOut: 0, netCashFlow: 0 }
+      );
+
+      resultData = { rows, totals };
+    }
+    else if (type === 'customers') {
+      // 4. Customers Balances & Aging Report
+      let query = `
+        SELECT id, name, phone, email, type, balance, credit_limit, total_invoices, address, business_unit, created_at
+        FROM customers
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (status === 'debtors') {
+        query += ' AND balance > 0';
+      } else if (status === 'creditors') {
+        query += ' AND balance < 0';
+      } else if (status === 'settled') {
+        query += ' AND balance = 0';
+      }
+
+      query += ' ORDER BY balance DESC, name ASC';
+      const [rows]: any = await pool.query(query, params);
+
+      const totals = rows.reduce(
+        (acc: any, row: any) => {
+          acc.count += 1;
+          acc.totalBalance += Number(row.balance || 0);
+          if (row.balance > 0) acc.totalDebit += Number(row.balance);
+          if (row.balance < 0) acc.totalCredit += Math.abs(Number(row.balance));
+          return acc;
+        },
+        { count: 0, totalBalance: 0, totalDebit: 0, totalCredit: 0 }
+      );
+
+      resultData = { rows, totals };
+    }
+    else if (type === 'suppliers') {
+      // 5. Suppliers Balances & Payables Report
+      let query = `
+        SELECT id, name, company, phone, email, category, balance, total_purchases, payment_terms, address, created_at
+        FROM suppliers
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (status === 'creditors') {
+        query += ' AND balance > 0';
+      } else if (status === 'settled') {
+        query += ' AND balance = 0';
+      }
+
+      query += ' ORDER BY balance DESC, name ASC';
+      const [rows]: any = await pool.query(query, params);
+
+      const totals = rows.reduce(
+        (acc: any, row: any) => {
+          acc.count += 1;
+          acc.totalBalance += Number(row.balance || 0);
+          acc.totalPurchases += Number(row.total_purchases || 0);
+          return acc;
+        },
+        { count: 0, totalBalance: 0, totalPurchases: 0 }
+      );
+
+      resultData = { rows, totals };
+    }
+    else if (type === 'expenses') {
+      // 6. Expenses Breakdown Report
+      let query = `
+        SELECT id, title, category, date, amount, type, allocation_ratio, shop_portion, freelance_portion, payment_account, created_at
+        FROM expenses
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (startDate) {
+        query += ' AND date >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ' AND date <= ?';
+        params.push(endDate);
+      }
+      if (category && category !== 'all') {
+        query += ' AND category = ?';
+        params.push(category);
+      }
+
+      query += ' ORDER BY date DESC, created_at DESC';
+      const [rows]: any = await pool.query(query, params);
+
+      const totals = rows.reduce(
+        (acc: any, row: any) => {
+          acc.count += 1;
+          acc.totalAmount += Number(row.amount || 0);
+          acc.shopPortion += Number(row.shop_portion || 0);
+          acc.freelancePortion += Number(row.freelance_portion || 0);
+          return acc;
+        },
+        { count: 0, totalAmount: 0, shopPortion: 0, freelancePortion: 0 }
+      );
+
+      resultData = { rows, totals };
+    }
+    else if (type === 'pnl') {
+      // 7. Standard P&L Statement calculated from actual tables
+      let salesWhere = "WHERE status = 'COMPLETED'";
+      let expenseWhere = "WHERE 1=1";
+      const sParams: any[] = [];
+      const eParams: any[] = [];
+
+      if (startDate) {
+        salesWhere += ' AND date >= ?';
+        expenseWhere += ' AND date >= ?';
+        sParams.push(startDate);
+        eParams.push(startDate);
+      }
+      if (endDate) {
+        salesWhere += ' AND date <= ?';
+        expenseWhere += ' AND date <= ?';
+        sParams.push(endDate);
+        eParams.push(endDate);
+      }
+
+      const [salesAgg]: any = await pool.query(
+        `SELECT 
+           COALESCE(SUM(net_total), 0) as total_sales,
+           COALESCE(SUM(cogs_total), 0) as total_cogs,
+           COALESCE(SUM(gross_profit), 0) as total_gross_profit,
+           COALESCE(SUM(CASE WHEN business_unit_id = 1 THEN net_total ELSE 0 END), 0) as shop_sales,
+           COALESCE(SUM(CASE WHEN business_unit_id = 1 THEN cogs_total ELSE 0 END), 0) as shop_cogs,
+           COALESCE(SUM(CASE WHEN business_unit_id = 2 THEN net_total ELSE 0 END), 0) as freelance_sales,
+           COALESCE(SUM(CASE WHEN business_unit_id = 2 THEN cogs_total ELSE 0 END), 0) as freelance_cogs
+         FROM sales_invoices ${salesWhere}`,
+        sParams
+      );
+
+      const [expenseAgg]: any = await pool.query(
+        `SELECT 
+           COALESCE(SUM(amount), 0) as total_expenses,
+           COALESCE(SUM(shop_portion), 0) as shop_expenses,
+           COALESCE(SUM(freelance_portion), 0) as freelance_expenses
+         FROM expenses ${expenseWhere}`,
+        eParams
+      );
+
+      const [salaryAgg]: any = await pool.query(
+        `SELECT COALESCE(SUM(net_payable), 0) as total_salaries FROM employees WHERE status = 'ACTIVE'`
+      );
+
+      const s = salesAgg[0] || {};
+      const e = expenseAgg[0] || {};
+      const totalSalaries = Number(salaryAgg[0]?.total_salaries || 0);
+
+      const totalSales = Number(s.total_sales || 0);
+      const totalCogs = Number(s.total_cogs || 0);
+      const grossProfit = Number(s.total_gross_profit || (totalSales - totalCogs));
+      const totalExpenses = Number(e.total_expenses || 0) + totalSalaries;
+      const netProfit = grossProfit - totalExpenses;
+
+      resultData = {
+        sales: totalSales,
+        cogs: totalCogs,
+        grossProfit,
+        expenses: totalExpenses,
+        operatingExpenses: Number(e.total_expenses || 0),
+        salaries: totalSalaries,
+        netProfit,
+        shop: {
+          sales: Number(s.shop_sales || 0),
+          cogs: Number(s.shop_cogs || 0),
+          grossProfit: Number(s.shop_sales || 0) - Number(s.shop_cogs || 0),
+          expenses: Number(e.shop_expenses || 0)
+        },
+        freelance: {
+          sales: Number(s.freelance_sales || 0),
+          cogs: Number(s.freelance_cogs || 0),
+          grossProfit: Number(s.freelance_sales || 0) - Number(s.freelance_cogs || 0),
+          expenses: Number(e.freelance_expenses || 0)
+        }
+      };
+    }
+
+    res.json({
+      success: true,
+      reportType: type,
+      timestamp: new Date().toISOString(),
+      data: resultData
+    });
+  } catch (err: any) {
+    console.error('Error generating report:', err);
+    res.status(500).json({ success: false, message: 'فشل استخراج التقرير: ' + err.message });
+  }
+});
+
 // Setup Vite development or production static files
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
