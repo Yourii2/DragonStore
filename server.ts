@@ -2544,7 +2544,7 @@ async function startServer() {
       }
     }
 
-    console.log(`  ➜  Cloudflare     : يعمل عبر نفق Cloudflare Tunnel المشغل بالخلفية`);
+    console.log(`  ➜  ${'Cloudflare'.padEnd(15)}: Connected via background Cloudflare Tunnel (Custom Domain)`);
     console.log(`\nEnterprise System running with MySQL Core on port ${PORT}`);
   });
 }
