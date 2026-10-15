@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 import fs from 'fs';
@@ -2524,8 +2525,20 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
+    // Find local network IP address
+    let lanIp = '127.0.0.1';
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254')) {
+          lanIp = net.address;
+          break;
+        }
+      }
+    }
+
     console.log(`\n  ➜  Local:   http://localhost:${PORT}/`);
-    console.log(`  ➜  Network: http://127.0.0.1:${PORT}/\n`);
+    console.log(`  ➜  Network: http://${lanIp}:${PORT}/\n`);
     console.log(`Enterprise System running with MySQL Core on port ${PORT}`);
   });
 }
