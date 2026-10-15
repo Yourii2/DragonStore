@@ -29,10 +29,12 @@ import {
   TrendingDown,
   Layers,
   Radio,
-  Wifi
+  Wifi,
+  User
 } from 'lucide-react';
 import { CurrentUser } from '../store/systemAuthStore';
 import { alertsStore, SystemAlert, AlertCategory } from '../store/alertsStore';
+import { UserProfileModal } from './UserProfileModal';
 
 interface TopHeaderProps {
   currentUser: CurrentUser;
@@ -41,11 +43,12 @@ interface TopHeaderProps {
   searchQuery: string;
   setSearchQuery: (val: string) => void;
   onLogout: () => void;
-  onReinstall: () => void;
+  onReinstall?: () => void;
   onOpenExport: () => void;
   onToggleSidebar: () => void;
   isSidebarOpen: boolean;
   onNavigateTab?: (tab: string) => void;
+  onUpdateUser?: (user: CurrentUser) => void;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -55,14 +58,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   searchQuery,
   setSearchQuery,
   onLogout,
-  onReinstall,
   onOpenExport,
   onToggleSidebar,
   isSidebarOpen,
-  onNavigateTab
+  onNavigateTab,
+  onUpdateUser
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [alerts, setAlerts] = useState<SystemAlert[]>(alertsStore.getAlerts());
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'LOW_STOCK' | 'OVERDUE_MILESTONE'>('ALL');
   const [floatingToast, setFloatingToast] = useState<SystemAlert | null>(null);
@@ -606,14 +610,14 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                   <button
                     onClick={() => {
                       setShowUserMenu(false);
-                      onReinstall();
+                      setIsProfileModalOpen(true);
                     }}
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                     }`}
                   >
-                    <RefreshCcw className="w-3.5 h-3.5 text-amber-500" />
-                    <span>إعادة تشغيل معالج التثبيت</span>
+                    <User className="w-3.5 h-3.5 text-cyan-500" />
+                    <span>الملف الشخصي وتغيير كلمة المرور</span>
                   </button>
 
                   <button
@@ -636,6 +640,16 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
         </div>
       </div>
+
+      {/* User Profile & Password Change Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={currentUser}
+        onUpdateUser={(updated) => {
+          if (onUpdateUser) onUpdateUser(updated);
+        }}
+      />
     </header>
   );
 };

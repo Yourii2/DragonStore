@@ -170,6 +170,7 @@ export default function App() {
             setActiveTab(tab);
             scrollToTop();
           }}
+          onUpdateUser={(updated) => setCurrentUser(updated)}
         />
 
         {/* Main Body Container */}

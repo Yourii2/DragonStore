@@ -113,6 +113,27 @@ CREATE TABLE IF NOT EXISTS accounts (
   type VARCHAR(50) NOT NULL,
   unit VARCHAR(50) NOT NULL DEFAULT 'BOTH',
   balance DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+  notes TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS financial_transactions (
+  id VARCHAR(50) PRIMARY KEY,
+  reference_no VARCHAR(50) NOT NULL,
+  date DATE NOT NULL,
+  transaction_type VARCHAR(50) NOT NULL,
+  account_id VARCHAR(50) NOT NULL,
+  account_name VARCHAR(200) NOT NULL,
+  to_account_id VARCHAR(50) NULL,
+  to_account_name VARCHAR(200) NULL,
+  flow VARCHAR(20) NOT NULL,
+  amount DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+  balance_after DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+  category VARCHAR(100) NULL,
+  party_type VARCHAR(50) NULL,
+  party_name VARCHAR(200) NULL,
+  payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH',
+  notes TEXT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

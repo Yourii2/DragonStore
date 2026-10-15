@@ -369,7 +369,7 @@ app.post('/api/system/test-db', async (req, res) => {
 });
 
 app.post('/api/system/install', async (req, res) => {
-  const { databaseConfig, businessConfig, adminAccount } = req.body;
+  const { databaseConfig, businessConfig, companyConfig, defaultsConfig, adminAccount, backupData } = req.body;
   try {
     const conn = await mysql.createConnection({
       host: databaseConfig.host || 'localhost',
@@ -392,31 +392,108 @@ app.post('/api/system/install', async (req, res) => {
       await conn.query(sql);
     }
 
-    // 3. Insert or update Admin User
-    await conn.query(
-      `INSERT INTO users (username, email, password_hash, full_name, phone, role, role_title_ar, accessible_units) 
-       VALUES (?, ?, ?, ?, ?, 'SUPER_ADMIN', 'المدير العام والمالك', 'BOTH') 
-       ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), password_hash = VALUES(password_hash), phone = VALUES(phone)`,
-      [
-        adminAccount.username || 'admin',
-        adminAccount.email || 'admin@dragon.com',
-        adminAccount.passwordHash || 'admin123',
-        adminAccount.fullName || 'المدير العام',
-        adminAccount.phone || ''
-      ]
-    );
+    // 3. If a backup was restored directly
+    if (backupData && backupData.data) {
+      const data = backupData.data;
+      for (const [table, rows] of Object.entries(data)) {
+        if (Array.isArray(rows) && rows.length > 0) {
+          try {
+            await conn.query(`DELETE FROM \`${table}\``);
+            for (const row of rows) {
+              const keys = Object.keys(row);
+              const values = Object.values(row);
+              const placeholders = keys.map(() => '?').join(', ');
+              const columns = keys.map(k => `\`${k}\``).join(', ');
+              await conn.query(`INSERT INTO \`${table}\` (${columns}) VALUES (${placeholders})`, values);
+            }
+          } catch (tableErr: any) {
+            console.error(`Error restoring table ${table}:`, tableErr.message);
+          }
+        }
+      }
+    } else {
+      // 4. Fresh Install Setup
 
-    // 4. Save business settings in MySQL
-    await conn.query(
-      `INSERT INTO system_settings (setting_key, setting_value) 
-       VALUES ('business_config', ?) 
-       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-      [JSON.stringify(businessConfig)]
-    );
+      // A. Insert or update Admin User
+      if (adminAccount) {
+        await conn.query(
+          `INSERT INTO users (username, email, password_hash, full_name, phone, role, role_title_ar, accessible_units) 
+           VALUES (?, ?, ?, ?, ?, 'SUPER_ADMIN', 'المدير العام والمالك', 'BOTH') 
+           ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), password_hash = VALUES(password_hash), phone = VALUES(phone)`,
+          [
+            adminAccount.username || 'admin',
+            adminAccount.email || 'admin@dragon.com',
+            adminAccount.passwordHash || 'admin123',
+            adminAccount.fullName || 'المدير العام',
+            adminAccount.phone || ''
+          ]
+        );
+      }
+
+      // B. Save company profile in MySQL
+      if (companyConfig) {
+        await conn.query(
+          `INSERT INTO system_settings (setting_key, setting_value) 
+           VALUES ('company_profile', ?) 
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+          [JSON.stringify(companyConfig)]
+        );
+      }
+
+      // C. Save business settings in MySQL
+      if (businessConfig) {
+        await conn.query(
+          `INSERT INTO system_settings (setting_key, setting_value) 
+           VALUES ('business_config', ?) 
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+          [JSON.stringify(businessConfig)]
+        );
+      }
+
+      // D. Insert Default Warehouse
+      if (defaultsConfig && defaultsConfig.warehouseName) {
+        const warehouseId = 'WH-01';
+        const warehouseName = defaultsConfig.warehouseName.trim();
+        await conn.query(
+          `INSERT INTO warehouses (id, code, name, keeper_name, location, type, total_items, total_valuation)
+           VALUES (?, 'WH-MAIN', ?, ?, 'المقر الرئيسي', 'MAIN_STORE', 0, 0.00)
+           ON DUPLICATE KEY UPDATE name = VALUES(name)`,
+          [warehouseId, warehouseName, adminAccount?.fullName || 'مسؤول المخزن']
+        );
+      }
+
+      // E. Insert Default Treasury & Opening Balance
+      if (defaultsConfig && defaultsConfig.treasuryName) {
+        const treasuryId = 'ACC-CASH-01';
+        const treasuryName = defaultsConfig.treasuryName.trim();
+        const openingBalance = Number(defaultsConfig.openingBalance) || 0;
+
+        await conn.query(
+          `INSERT INTO accounts (id, account_code, name, type, unit, balance, notes)
+           VALUES (?, '1111', ?, 'ASSET', 'SHOP', ?, 'الخزينة الافتراضية للنظام')
+           ON DUPLICATE KEY UPDATE name = VALUES(name), balance = VALUES(balance)`,
+          [treasuryId, treasuryName, openingBalance]
+        );
+
+        // If opening balance > 0, log opening transaction
+        if (openingBalance > 0) {
+          const txId = `FTX-${Date.now()}`;
+          const today = new Date().toISOString().slice(0, 10);
+          await conn.query(
+            `INSERT INTO financial_transactions (
+              id, reference_no, date, transaction_type, account_id, account_name,
+              flow, amount, balance_after, category, party_type, party_name,
+              payment_method, notes
+            ) VALUES (?, ?, ?, 'RECEIPT', ?, ?, 'IN', ?, ?, 'رصيد افتتاحي', 'INTERNAL', 'إيداع رصيد افتتاحي عند التثبيت', 'CASH', 'الرصيد الافتتاحي للخزينة عند بدء تشغيل النظام')`,
+            [txId, `OPN-${Date.now().toString().slice(-6)}`, today, treasuryId, treasuryName, openingBalance, openingBalance]
+          );
+        }
+      }
+    }
 
     await conn.end();
 
-    // 6. Reset pool and save local config file
+    // 5. Reset pool and save local config file
     resetPool();
     const systemConfig: SystemConfig = {
       isInstalled: true,
@@ -429,14 +506,26 @@ app.post('/api/system/install', async (req, res) => {
         password: databaseConfig.password || '',
         charset: 'utf8mb4'
       },
-      businessConfig,
-      adminAccount: {
+      businessConfig: businessConfig || {
+        companyNameAr: companyConfig?.company_name || 'دراجون للأنظمة',
+        companyNameEn: 'Dragon Systems',
+        currency: 'EGP',
+        currencySymbol: 'ج.م',
+        country: 'جمهورية مصر العربية',
+        taxNumber: companyConfig?.tax_number || '',
+        commercialRecord: companyConfig?.commercial_record || '',
+        shopUnitName: 'متجر الحواسيب والشبكات',
+        freelanceUnitName: 'تطوير البرمجيات والحلول السحابية',
+        defaultSharedShopRatio: 70,
+        defaultSharedFreelanceRatio: 30
+      },
+      adminAccount: adminAccount ? {
         fullName: adminAccount.fullName,
         username: adminAccount.username,
         email: adminAccount.email,
-        phone: adminAccount.phone,
+        phone: adminAccount.phone || '',
         role: 'SUPER_ADMIN'
-      }
+      } : undefined
     };
     saveConfigFile(systemConfig);
 
@@ -613,6 +702,60 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 
     res.json({ success: true, message: 'تم حذف المستخدم بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Change Current User Password & Profile
+app.post('/api/users/change-password', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const { username, current_password, new_password, full_name, email } = req.body;
+    if (!username || !new_password) {
+      return res.status(400).json({ success: false, message: 'اسم المستخدم وكلمة المرور الجديدة مطلوبان' });
+    }
+
+    const [rows]: any = await pool.query('SELECT * FROM users WHERE LOWER(username) = ?', [username.trim().toLowerCase()]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+    }
+
+    const user = rows[0];
+    if (current_password && user.password_hash !== current_password) {
+      return res.status(400).json({ success: false, message: 'كلمة المرور الحالية غير صحيحة' });
+    }
+
+    const updatedName = full_name ? full_name.trim() : user.full_name;
+    const updatedEmail = email ? email.trim() : user.email;
+
+    await pool.query(
+      'UPDATE users SET password_hash = ?, full_name = ?, email = ? WHERE id = ?',
+      [new_password, updatedName, updatedEmail, user.id]
+    );
+
+    // Audit log
+    await pool.query(
+      `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
+       VALUES (?, ?, ?, 'تغيير كلمة المرور', 'الملف الشخصي', 'users', ?)`,
+      [`log-${Date.now()}`, new Date().toISOString(), user.full_name, `قام المستخدم ${user.username} بتغيير كلمة المرور الخاصة به بنجاح`]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'تم تغيير كلمة المرور وتحديث البيانات بنجاح',
+      user: {
+        id: `usr_${user.id}`,
+        name: updatedName,
+        username: user.username,
+        email: updatedEmail,
+        role: user.role,
+        roleTitleAr: user.role_title_ar || 'مسؤول النظام',
+        avatarColor: user.role === 'SUPER_ADMIN' ? 'bg-cyan-600' : 'bg-emerald-600',
+        accessibleUnits: [user.accessible_units || 'BOTH']
+      }
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
