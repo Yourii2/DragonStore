@@ -83,9 +83,19 @@ interface SuspendedCart {
   mode: 'SALE' | 'QUOTATION';
 }
 
-export const SalesAndPosView: React.FC = () => {
+interface SalesAndPosViewProps {
+  initialMode?: 'SALE' | 'QUOTATION';
+}
+
+export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 'SALE' }) => {
   // Mode: Sale Invoice or Price Quotation
-  const [docMode, setDocMode] = useState<'SALE' | 'QUOTATION'>('SALE');
+  const [docMode, setDocMode] = useState<'SALE' | 'QUOTATION'>(initialMode);
+
+  useEffect(() => {
+    if (initialMode) {
+      setDocMode(initialMode);
+    }
+  }, [initialMode]);
 
   // Master Data
   const [products, setProducts] = useState<Product[]>([]);
@@ -736,32 +746,30 @@ export const SalesAndPosView: React.FC = () => {
     <div className="space-y-4 animate-fadeIn text-slate-800 dark:text-slate-100 pb-12">
       {/* Top Bar: Switch Mode, Warehouse, Suspended Bills, History */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900/90 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm backdrop-blur-md">
-        {/* Left: Mode Tabs */}
+        {/* Left: Mode Title Badge */}
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <div className="bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl flex items-center border border-slate-200 dark:border-slate-800">
-            <button
-              onClick={() => setDocMode('SALE')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                docMode === 'SALE'
-                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/30'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              <ShoppingCart className="w-4 h-4" />
-              <span>فاتورة مبيعات وكاشير (POS)</span>
-            </button>
-
-            <button
-              onClick={() => setDocMode('QUOTATION')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                docMode === 'QUOTATION'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>عرض أسعار رسمي (Quotation)</span>
-            </button>
+          <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+            {docMode === 'SALE' ? (
+              <>
+                <div className="w-8 h-8 rounded-xl bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                  <ShoppingCart className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">إدارة المبيعات ونقاط البيع (POS)</h3>
+                  <span className="text-[10px] text-slate-400 font-bold">إصدار وتحصيل فواتير المبيعات الفورية والآجلة</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-8 h-8 rounded-xl bg-purple-600/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">إدارة عروض الأسعار الرسمية (Quotations)</h3>
+                  <span className="text-[10px] text-slate-400 font-bold">إنشاء عروض أسعار للعملاء مع إمكانية التحويل المباشر لفواتير مبيعات</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

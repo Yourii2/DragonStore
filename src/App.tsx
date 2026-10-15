@@ -227,8 +227,24 @@ export default function App() {
             )}
 
             {/* 6. اداره المبيعات */}
-            {activeTab === 'sales' && (
-              <SalesAndPosView />
+            {(activeTab === 'sales' || activeTab === 'sales_pos') && (
+              <SalesAndPosView initialMode="SALE" />
+            )}
+
+            {activeTab === 'quotations' && (
+              <SalesAndPosView initialMode="QUOTATION" />
+            )}
+
+            {activeTab === 'network_page' && (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 mx-auto flex items-center justify-center">
+                  <Database className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">إدارة الشبكة والمشتركين</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  تم تفعيل ظهور هذه الصفحة بنجاح من إعدادات الشركة. سيتم تفعيل خصائصها وربطها الكامل بالشبكة لاحقاً.
+                </p>
+              </div>
             )}
 
             {/* 7. اداره تقارير */}

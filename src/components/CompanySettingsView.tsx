@@ -12,7 +12,9 @@ import {
   Save, 
   Upload, 
   X,
-  Sparkles
+  Sparkles,
+  Wifi,
+  Network
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 
@@ -34,7 +36,8 @@ export const CompanySettingsView: React.FC = () => {
     tax_number: '',
     commercial_record: '',
     vat_rate: 14,
-    currency: 'EGP'
+    currency: 'EGP',
+    show_network_page: false
   });
 
   const [loading, setLoading] = useState(false);
@@ -57,7 +60,8 @@ export const CompanySettingsView: React.FC = () => {
           tax_number: data.data.tax_number || '',
           commercial_record: data.data.commercial_record || '',
           vat_rate: Number(data.data.vat_rate !== undefined ? data.data.vat_rate : 14),
-          currency: data.data.currency || 'EGP'
+          currency: data.data.currency || 'EGP',
+          show_network_page: Boolean(data.data.show_network_page)
         });
       }
     } catch (err) {
@@ -333,6 +337,33 @@ export const CompanySettingsView: React.FC = () => {
                 <option value="EUR">يورو (EUR - €)</option>
               </select>
             </div>
+          </div>
+
+          {/* خيار إظهار أو إخفاء صفحة الشبكة */}
+          <div className="p-4 rounded-2xl bg-cyan-50/60 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-800/40 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                <Wifi className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <span>إظهار صفحة "الشبكة" في قائمة إدارة المبيعات</span>
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  تفعيل ظهور بند صفحة "الشبكة" ضمن القائمة المنسدلة لإدارة المبيعات في الشريط الجانبي
+                </p>
+              </div>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={Boolean(formData.show_network_page)} 
+                onChange={e => setFormData({ ...formData, show_network_page: e.target.checked })} 
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+            </label>
           </div>
 
           <div className="pt-4 flex justify-end border-t border-slate-200 dark:border-slate-800">

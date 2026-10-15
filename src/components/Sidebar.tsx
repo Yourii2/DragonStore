@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Home, 
   Package, 
@@ -28,7 +28,9 @@ import {
   Building,
   CheckCircle,
   Download,
-  TrendingUp
+  TrendingUp,
+  FileText,
+  Wifi
 } from 'lucide-react';
 
 interface SubMenuItem {
@@ -63,7 +65,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isDarkMode,
   onLogout
 }) => {
+  const [showNetworkPage, setShowNetworkPage] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchCompanyProfile = async () => {
+      try {
+        const res = await fetch('/api/settings/company');
+        const data = await res.json();
+        if (data.success && data.data) {
+          setShowNetworkPage(Boolean(data.data.show_network_page));
+        }
+      } catch (e) {
+        console.error('Failed to load company profile for sidebar', e);
+      }
+    };
+    fetchCompanyProfile();
+  }, [activeTab]);
+
   // Navigation structure requested by user with collapsible dropdowns
+  const salesChildren: SubMenuItem[] = [
+    { id: 'sales_pos', label: 'اداره المبيعات', icon: ShoppingCart },
+    { id: 'quotations', label: 'عروض الاسعار', icon: FileText }
+  ];
+
+  if (showNetworkPage) {
+    salesChildren.push({ id: 'network_page', label: 'الشبكه', icon: Wifi });
+  }
+
   const menuItems: MenuItem[] = [
     { 
       id: 'dashboard', 
@@ -113,10 +141,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     },
     { 
-      id: 'sales', 
+      id: 'sales_group', 
       label: 'اداره المبيعات', 
       icon: ShoppingCart, 
-      isDropdown: false 
+      isDropdown: true,
+      children: salesChildren
     },
     { 
       id: 'reports_group', 
