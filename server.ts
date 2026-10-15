@@ -17,193 +17,7 @@ const PORT = 3000;
 app.use(express.json());
 
 // Helper: Seed Initial System Data if empty
-async function seedInitialData(connection: mysql.Connection | mysql.Pool) {
-  // Check products
-  const [prodRows]: any = await connection.query('SELECT COUNT(*) as count FROM products');
-  if (prodRows[0].count === 0) {
-    const products = [
-      ['PRD-001', 'LAP-DELL-5520', '6221004829101', 'لابتوب Dell Precision 5520 Core i7 / 32GB RAM / 512GB SSD', 'أجهزة ولابتوبات', 'قطعة', 22000, 26500, 8, 3, 'مخزن المتجر الرئيسي', 1, 'SHOP', JSON.stringify(['SN-DELL-01', 'SN-DELL-02', 'SN-DELL-03'])],
-      ['PRD-002', 'SSD-KNG-1TB', '6221004829102', 'هارد SSD Kingston NV2 NVMe M.2 1TB Gen 4', 'قطع غيار وتخزين', 'قطعة', 2600, 3200, 24, 5, 'مخزن المتجر الرئيسي', 1, 'BOTH', JSON.stringify(['SN-SSD-101', 'SN-SSD-102'])],
-      ['PRD-003', 'CAM-HIK-5MP', '6221004829103', 'كاميرا مراقبة خارجية Hikvision 5MP ColorVu Audio IP', 'كاميرات المراقبة CCTV', 'قطعة', 1100, 1550, 35, 10, 'مخزن ورشة الصيانة والتركيبات', 1, 'SERVICES', JSON.stringify(['SN-CAM-501', 'SN-CAM-502'])],
-      ['PRD-004', 'NET-CAB-CAT6', '6221004829104', 'لفة كابل شبكات Schneider Cat6 UTP 305m نحاس نقي', 'شبكات وكابلات', 'لفة', 3900, 4700, 12, 4, 'مخزن المتجر الرئيسي', 0, 'SERVICES', JSON.stringify([])],
-      ['PRD-005', 'ROUT-MIK-HEX', '6221004829105', 'راوتر بورد MikroTik hEX RB750Gr3 لإدارة شبكات الإنترنت', 'معدات إنترنت وISP', 'قطعة', 2800, 3500, 4, 5, 'مخزن المتجر الرئيسي', 1, 'BOTH', JSON.stringify(['SN-MIK-901', 'SN-MIK-902'])]
-    ];
-    for (const p of products) {
-      await connection.query(
-        'INSERT INTO products (id, code, barcode, name, category, unit, buy_price, sell_price, current_stock, min_stock, warehouse, has_serial, business_unit, serial_numbers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        p
-      );
-    }
-  }
-
-  // Check customers
-  const [custRows]: any = await connection.query('SELECT COUNT(*) as count FROM customers');
-  if (custRows[0].count === 0) {
-    const customers = [
-      ['CUST-001', 'شركة النور للمقاولات والتجارة', '01099887766', 'info@alnoor-contracting.com', 'COMMERCIAL_CCTV', 14500, 30000, 5, 'القاهرة - التجمع الخامس', 'SHOP'],
-      ['CUST-002', 'م/ طارق الزيات (عميل برمجيات سحابية)', '01122334455', 'tarek.alzyat@fintech.io', 'FREELANCE_CLIENT', 25000, 50000, 2, 'دبي - الإمارات العربية المتحدة', 'FREELANCE'],
-      ['CUST-003', 'د/ شريف عبد الله (عيادات الحياة)', '01233445566', 'dr.sherif@alhayat-clinics.com', 'FREELANCE_CLIENT', 10000, 25000, 3, 'الجيزة - الدقي', 'FREELANCE'],
-      ['CUST-004', 'معرض الشروق للأدوات الكهربائية', '01055667788', 'contact@alshorouk.net', 'COMMERCIAL_CCTV', 8200, 15000, 4, 'القاهرة - مدينة نصر', 'SHOP'],
-      ['CUST-005', 'أحمد محمود العوضي (مشترك إنترنت منزلي)', '01511223344', 'ahmed.awady@gmail.com', 'ISP_SUBSCRIBER', 450, 1000, 12, 'القاهرة - المعادي', 'SHOP']
-    ];
-    for (const c of customers) {
-      await connection.query(
-        'INSERT INTO customers (id, name, phone, email, type, balance, credit_limit, total_invoices, address, business_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        c
-      );
-    }
-  }
-
-  // Check suppliers
-  const [supRows]: any = await connection.query('SELECT COUNT(*) as count FROM suppliers');
-  if (supRows[0].count === 0) {
-    const suppliers = [
-      ['SUP-001', 'شركة الوكيل المعتمد للحواسب (دل ولينوفو)', 'الوكيل جروب للتوزيع', '01011223344', 'sales@alwakeel-dist.com', 'أجهزة ولابتوبات', 48000, 240000, 'آجل 30 يوم', 'القاهرة - مول البستان للكمبيوتر'],
-      ['SUP-002', 'الشركة المصرية الدولية لحلول المراقبة (Hikvision)', 'إيجيبت سيكيورتي فيجن', '01223344556', 'cctv@egyptsecurity.net', 'كاميرات المراقبة وأجهزة NVR', 16500, 95000, 'نقدي / تحويل بنكي', 'الجيزة - المهندسين'],
-      ['SUP-003', 'المتحدة لشبكات وكابلات الألياف الضوئية', 'المتحدة للاتصالات', '01144556677', 'info@united-networks.eg', 'شبكات ومعدات ISP', 12000, 68000, 'تحويل بنكي / إنستاباي', 'القاهرة - وسط البلد']
-    ];
-    for (const s of suppliers) {
-      await connection.query(
-        'INSERT INTO suppliers (id, name, company, phone, email, category, balance, total_purchases, payment_terms, address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        s
-      );
-    }
-  }
-
-  // Check employees
-  const [empRows]: any = await connection.query('SELECT COUNT(*) as count FROM employees');
-  if (empRows[0].count === 0) {
-    const employees = [
-      ['EMP-001', 'م/ إسلام عبد العزيز', 'مهندس صيانة حواسيب وإلكترونيات', 'ورشة الصيانة والدعم الفني', '01012349988', 'islam.tech@dragonsystems.com', 7500, 1800, 1000, 8300, 'SHOP', 'ACTIVE', '2024-01-15'],
-      ['EMP-002', 'م/ عمر مصطفى', 'مطور برمجيات Full-Stack Senior', 'وحدة تطوير البرمجيات السحابية', '01198765432', 'omar.dev@dragonsystems.com', 18000, 4500, 0, 22500, 'FREELANCE', 'ACTIVE', '2023-06-01'],
-      ['EMP-003', 'خالد محمود', 'أمين المبيعات ونقاط البيع (Cashier)', 'صالة العرض والمبيعات', '01244556611', 'khaled.pos@dragonsystems.com', 5000, 1200, 500, 5700, 'SHOP', 'ACTIVE', '2024-03-01'],
-      ['EMP-004', 'سامح فؤاد', 'رئيس الحسابات والمدير المالي', 'الإدارة المالية والمحاسبية', '01088776655', 'sameh.acc@dragonsystems.com', 12000, 0, 0, 12000, 'BOTH', 'ACTIVE', '2023-01-10']
-    ];
-    for (const e of employees) {
-      await connection.query(
-        'INSERT INTO employees (id, name, job_title, department, phone, email, base_salary, commissions, advances, net_payable, business_unit, status, hire_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        e
-      );
-    }
-  }
-
-  // Check warehouses
-  const [whRows]: any = await connection.query('SELECT COUNT(*) as count FROM warehouses');
-  if (whRows[0].count === 0) {
-    const warehouses = [
-      ['WH-001', 'WH-MAIN', 'مخزن المتجر الرئيسي (البضائع والأجهزة)', 'كريم عادل (أمين المخزن)', 'المقر الرئيسي - الطابق الأرضي', 'MAIN_STORE', 85, 385000],
-      ['WH-002', 'WH-WORKSHOP', 'مخزن ورشة الصيانة وقطع الغيار', 'م/ إسلام عبد العزيز', 'ورشة الصيانة - الطابق الأول', 'WORKSHOP_PARTS', 42, 78000],
-      ['WH-003', 'WH-PROJECTS', 'مخزن عهدة مشاريع CCTV والشبكات', 'أحمد سعيد البنداري', 'المستودع الفرعي ومعدات التركيبات', 'PROJECTS_CUSTODY', 28, 115000]
-    ];
-    for (const w of warehouses) {
-      await connection.query(
-        'INSERT INTO warehouses (id, code, name, keeper_name, location, type, total_items, total_valuation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        w
-      );
-    }
-  }
-
-  // Check accounts
-  const [accRows]: any = await connection.query('SELECT COUNT(*) as count FROM accounts');
-  if (accRows[0].count === 0) {
-    const accounts = [
-      ['acc_cash_shop', '1111', 'صندوق كاشير المحل (نقدية)', 'ASSET', 'SHOP', 18450],
-      ['acc_vault', '1112', 'خزينة المتجر الرئيسية', 'ASSET', 'BOTH', 85000],
-      ['acc_cib_bank', '1121', 'حساب البنك التجاري الدولي (CIB)', 'ASSET', 'BOTH', 245000],
-      ['acc_instapay', '1131', 'محفظة إنستاباي وفودافون كاش الرسمية', 'ASSET', 'BOTH', 36050]
-    ];
-    for (const a of accounts) {
-      await connection.query(
-        'INSERT INTO accounts (id, account_code, name, type, unit, balance) VALUES (?, ?, ?, ?, ?, ?)',
-        a
-      );
-    }
-  }
-
-  // Check maintenance orders
-  const [maintRows]: any = await connection.query('SELECT COUNT(*) as count FROM maintenance_orders');
-  if (maintRows[0].count === 0) {
-    const orders = [
-      ['ord-01', 'SRV-2026-040', 'م/ حسام رضوان', '01022334455', 'Laptop', 'Lenovo ThinkPad T480', 'PF-1X492A', 'الجهاز بطيء جداً والشاشة تفصل مع الحركة ومروحة التبريد تصدر صوتاً عالي', 'IN_REPAIR', 'م/ إسلام عبد العزيز', JSON.stringify([{ product_id: 'PRD-002', name: 'هارد SSD Kingston 1TB NVMe', quantity: 1, cost: 2600, price: 3200 }]), 450, 3650, 1000, '2026-09-20', null],
-      ['ord-02', 'SRV-2026-041', 'د/ منى عثمان', '01144556677', 'Laptop', 'MacBook Air M1 2020', 'C02D1234Q05D', 'تغيير بطارية أصلية + تنظيف كيبورد بعد سكب سائل خفيف', 'WAITING_PARTS', 'م/ إسلام عبد العزيز', JSON.stringify([]), 600, 3800, 2000, '2026-09-21', null]
-    ];
-    for (const o of orders) {
-      await connection.query(
-        'INSERT INTO maintenance_orders (id, order_number, customer_name, customer_phone, device_type, brand_model, serial_number, problem_description, status, technician_name, parts_used, labor_cost, total_amount, paid_amount, received_date, delivery_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        o
-      );
-    }
-  }
-
-  // Check freelance projects
-  const [frRows]: any = await connection.query('SELECT COUNT(*) as count FROM freelance_projects');
-  if (frRows[0].count === 0) {
-    const projects = [
-      ['prj-01', 'منصة ERP سحابية لإدارة الأسطول والشاحنات', 'شركة الفرسان الدولية للخدمات اللوجستية', 'الإمارات', 85000, 'EGP', 'IN_PROGRESS', '2026-08-01', JSON.stringify([
-        { id: 'mls-1', name: 'تصميم البنية التحتية والـ Database Schema و API', amount: 30000, status: 'PAID' },
-        { id: 'mls-2', name: 'تطبيق لوحة تحكم السائقين وتتبع GPS اللحظي', amount: 35000, status: 'IN_PROGRESS' },
-        { id: 'mls-3', name: 'التسليم النهائي وإطلاق النظام على السيرفر السحابي', amount: 20000, status: 'PENDING' }
-      ])],
-      ['prj-02', 'تطبيق متجر إلكتروني للهواتف الذكية (iOS & Android)', 'مؤسسة الصفوة للتجارة', 'السعودية', 45000, 'EGP', 'COMPLETED', '2026-07-15', JSON.stringify([
-        { id: 'mls-201', name: 'UI/UX Design + Prototype', amount: 15000, status: 'PAID' },
-        { id: 'mls-202', name: 'تكامل بوابات الدفع الإلكتروني وربط المخازن', amount: 20000, status: 'PAID' },
-        { id: 'mls-203', name: 'النشر على App Store و Google Play', amount: 10000, status: 'PAID' }
-      ])]
-    ];
-    for (const p of projects) {
-      await connection.query(
-        'INSERT INTO freelance_projects (id, title, client_name, client_country, contract_amount, currency, status, start_date, milestones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        p
-      );
-    }
-  }
-
-  // Check cctv projects
-  const [cctvRows]: any = await connection.query('SELECT COUNT(*) as count FROM cctv_projects');
-  if (cctvRows[0].count === 0) {
-    const cctv = [
-      ['cctv-01', 'مشروع تأمين ومراقبة مصنع الأمل للصناعات المعدنية', 'شركة الأمل جروب', '01011229988', 16, 'Hikvision AcuSense NVR 16CH 4K', 48500, 30000, 'IN_PROGRESS', '2026-09-15', '2026-09-30']
-    ];
-    for (const c of cctv) {
-      await connection.query(
-        'INSERT INTO cctv_projects (id, project_name, customer_name, customer_phone, cameras_count, dvr_type, total_amount, paid_amount, status, start_date, target_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        c
-      );
-    }
-  }
-
-  // Check subscribers
-  const [subRows]: any = await connection.query('SELECT COUNT(*) as count FROM internet_subscribers');
-  if (subRows[0].count === 0) {
-    const subs = [
-      ['sub-01', 'أحمد محمود العوضي', '01012345678', '192.168.10.45', 'الباقة الذهبية Ultra 50 Mbps', 350, 1, 'ACTIVE', 'D4:CA:6D:88:91:02'],
-      ['sub-02', 'محمد صبري النجار', '01122334455', '192.168.10.46', 'الباقة الفضية Pro 30 Mbps', 250, 5, 'ACTIVE', 'D4:CA:6D:88:91:03'],
-      ['sub-03', 'مكتب الصفا للاستشارات الهندسية', '01233445566', '192.168.10.100', 'باقة الشركات المخصصة 100 Mbps Dedicated', 1200, 1, 'ACTIVE', 'C4:AD:34:11:22:90']
-    ];
-    for (const s of subs) {
-      await connection.query(
-        'INSERT INTO internet_subscribers (id, subscriber_name, phone, ip_address, package_name, monthly_fee, due_day, status, router_mac) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        s
-      );
-    }
-  }
-
-  // Check expenses
-  const [expRows]: any = await connection.query('SELECT COUNT(*) as count FROM expenses');
-  if (expRows[0].count === 0) {
-    const expenses = [
-      ['exp-01', 'إيجار المقر المشترك لشهر سبتمبر 2026', 'RENT', '2026-09-01', 8000, 'SHARED_DEFAULT', '70_30', 5600, 2400, 'CIB_BANK', 'JV-1001'],
-      ['exp-02', 'فاتورة الإنترنت فايبر فائق السرعة والمرافق', 'UTILITIES', '2026-09-05', 2500, 'SHARED_DEFAULT', '70_30', 1750, 750, 'CASHBOX', 'JV-1002'],
-      ['exp-03', 'اشتراك خوادم سحابية وتراخيص GitHub و Vercel', 'SOFTWARE_SUBSCRIPTION', '2026-09-10', 4200, 'DIRECT_FREELANCE', '0_100', 0, 4200, 'INSTAPAY', 'JV-1003']
-    ];
-    for (const ex of expenses) {
-      await connection.query(
-        'INSERT INTO expenses (id, title, category, date, amount, type, allocation_ratio, shop_portion, freelance_portion, payment_account, journal_entry_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        ex
-      );
-    }
-  }
-}
+// SeedInitialData removed - System starts clean without mock data
 
 // -------------------------------------------------------------
 // API: System Status & Installation API
@@ -600,8 +414,6 @@ app.post('/api/system/install', async (req, res) => {
       [JSON.stringify(businessConfig)]
     );
 
-    // 5. Seed initial data
-    await seedInitialData(conn);
     await conn.end();
 
     // 6. Reset pool and save local config file
@@ -663,7 +475,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const user = rows[0];
-    if (user.password_hash !== password && password !== 'Admin@2026!Secure') {
+    if (user.password_hash !== password) {
       return res.status(401).json({ success: false, message: 'كلمة المرور غير صحيحة' });
     }
 
