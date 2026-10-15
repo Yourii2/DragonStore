@@ -20,9 +20,8 @@ export function printTableOrReceipt(title: string, htmlContent: string) {
   <meta charset="utf-8">
   <title>${title} - متجر دراجون للاليكترونيات</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
     body {
-      font-family: 'Cairo', sans-serif;
+      font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
       padding: 24px;
       margin: 0;
       color: #0f172a;

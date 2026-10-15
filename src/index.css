@@ -12,7 +12,7 @@
 
 /* Smooth transitions for theme switching */
 body {
-  font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+  font-family: 'Cairo', 'Segoe UI', Tahoma, 'Arial Arabic', Arial, sans-serif;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
