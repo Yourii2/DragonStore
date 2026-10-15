@@ -2170,6 +2170,70 @@ app.post('/api/alerts/mark-read', (req, res) => {
   res.json({ success: true });
 });
 
+// Real-time Server-Sent Events (SSE) for system alerts & notifications
+app.get('/api/alerts/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const sendAuditData = async () => {
+    const pool = getPool();
+    if (!pool) return;
+    try {
+      const [lowRows]: any = await pool.query('SELECT * FROM products WHERE current_stock <= min_stock');
+      const lowStockAlerts = lowRows.map((item: any) => ({
+        id: `ALERT-STK-${item.code}`,
+        code: item.code,
+        name: item.name,
+        category: 'LOW_STOCK',
+        severity: item.current_stock === 0 ? 'CRITICAL' : 'WARNING',
+        warehouse: item.warehouse,
+        currentStock: item.current_stock,
+        minStock: item.min_stock,
+        deficit: item.min_stock - item.current_stock,
+        unit: item.unit,
+        title: `نقص مخزون حرج: ${item.name}`,
+        description: `الرصيد في (${item.warehouse}) هو ${item.current_stock} ${item.unit} فقط (الحد الأدنى ${item.min_stock} ${item.unit}). العجز: ${item.min_stock - item.current_stock} ${item.unit}.`,
+        targetTab: 'products',
+        actionLabel: 'إصدار أمر شراء وتوريد',
+        timeAgo: 'مباشر من MySQL',
+        isRead: false
+      }));
+
+      const payload = {
+        success: true,
+        source: 'MySQL 8.0+ Enterprise Core',
+        timestamp: new Date().toISOString(),
+        counts: {
+          total: lowStockAlerts.length,
+          unread: lowStockAlerts.length,
+          lowStock: lowStockAlerts.length,
+          overdueMilestones: 0
+        },
+        alerts: lowStockAlerts,
+        lowStockItems: lowStockAlerts,
+        overdueMilestones: []
+      };
+
+      res.write(`event: alert_update\ndata: ${JSON.stringify(payload)}\n\n`);
+    } catch (e) {
+      // Ignore query errors during heartbeat
+    }
+  };
+
+  // Initial push
+  await sendAuditData();
+
+  // Periodic heartbeat / update push every 30 seconds
+  const interval = setInterval(sendAuditData, 30000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
 // -------------------------------------------------------------
 // Sales Invoices & Quotations API
 // -------------------------------------------------------------

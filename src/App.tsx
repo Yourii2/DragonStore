@@ -25,6 +25,7 @@ import { SettingsManagementView } from './components/SettingsManagementView';
 import { ConnectionSettingsView } from './components/ConnectionSettingsView';
 import { CompanySettingsView } from './components/CompanySettingsView';
 import { UpdateSettingsView } from './components/UpdateSettingsView';
+import { UsersManagementView } from './components/UsersManagementView';
 import { ActivityLogView } from './components/ActivityLogView';
 import { InteractiveTestSandbox } from './components/InteractiveTestSandbox';
 import { ModuleViewer } from './components/ModuleViewer';

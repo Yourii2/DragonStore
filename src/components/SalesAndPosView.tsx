@@ -131,6 +131,15 @@ export const SalesAndPosView: React.FC = () => {
   // Barcode input ref
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const safeJson = async (res: Response) => {
+    try {
+      const text = await res.text();
+      return JSON.parse(text);
+    } catch {
+      return { success: false, data: null };
+    }
+  };
+
   // Fetch Master Data
   const loadMasterData = async () => {
     try {
@@ -144,11 +153,11 @@ export const SalesAndPosView: React.FC = () => {
       ]);
 
       const [pData, cData, aData, wData, compData] = await Promise.all([
-        prodRes.json(),
-        custRes.json(),
-        accRes.json(),
-        whRes.json(),
-        compRes.json()
+        safeJson(prodRes),
+        safeJson(custRes),
+        safeJson(accRes),
+        safeJson(whRes),
+        safeJson(compRes)
       ]);
 
       if (pData.success) setProducts(pData.data || []);
@@ -162,11 +171,11 @@ export const SalesAndPosView: React.FC = () => {
       if (wData.success && wData.data?.length > 0) {
         setWarehouses(wData.data);
       }
-      if (compData.success) {
+      if (compData.success && compData.data) {
         setCompanyProfile(compData.data);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load master data in SalesAndPosView:', err);
     } finally {
       setLoading(false);
     }
