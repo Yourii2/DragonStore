@@ -125,15 +125,42 @@ class SystemAuthStore {
     this.notify();
   }
 
-  login(user: CurrentUser) {
+  login(user: CurrentUser, rememberSession: boolean = true) {
     this.currentUser = user;
+    if (rememberSession) {
+      try {
+        localStorage.setItem('dragon_erp_session_user', JSON.stringify(user));
+      } catch (e) {
+        console.error('Failed to save session to localStorage', e);
+      }
+    }
     this.notify();
+  }
+
+  loadSavedSession(): CurrentUser | null {
+    try {
+      const saved = localStorage.getItem('dragon_erp_session_user');
+      if (saved) {
+        this.currentUser = JSON.parse(saved);
+        return this.currentUser;
+      }
+    } catch (e) {
+      console.error('Failed to parse saved session', e);
+    }
+    return null;
   }
 
   logout() {
     this.currentUser = null;
+    try {
+      localStorage.removeItem('dragon_erp_session_user');
+    } catch (e) {
+      console.error('Failed to remove session', e);
+    }
     this.notify();
   }
 }
 
 export const systemAuthStore = new SystemAuthStore();
+// Auto load session on startup
+systemAuthStore.loadSavedSession();

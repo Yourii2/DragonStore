@@ -15,9 +15,28 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-  const [rememberMe, setRememberMe] = useState<boolean>(true);
+  const [username, setUsername] = useState<string>(() => {
+    try {
+      return localStorage.getItem('dragon_erp_remembered_username') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [password, setPassword] = useState<string>(() => {
+    try {
+      return localStorage.getItem('dragon_erp_remembered_password') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [rememberMe, setRememberMe] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('dragon_erp_remember_me');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -38,7 +57,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         throw new Error(data.message || 'بيانات الدخول غير صحيحة');
       }
 
-      systemAuthStore.login(data.user);
+      // Handle "Remember Me"
+      try {
+        if (rememberMe) {
+          localStorage.setItem('dragon_erp_remember_me', 'true');
+          localStorage.setItem('dragon_erp_remembered_username', username);
+          localStorage.setItem('dragon_erp_remembered_password', password);
+        } else {
+          localStorage.setItem('dragon_erp_remember_me', 'false');
+          localStorage.removeItem('dragon_erp_remembered_username');
+          localStorage.removeItem('dragon_erp_remembered_password');
+        }
+      } catch (err) {
+        console.error('Failed to store rememberMe settings in localStorage', err);
+      }
+
+      systemAuthStore.login(data.user, rememberMe);
       onLoginSuccess(data.user);
     } catch (err: any) {
       setErrorMessage(err.message || 'فشل تسجيل الدخول، يرجى التحقق من صحة البيانات المسجلة بقاعدة البيانات');
