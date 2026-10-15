@@ -25,10 +25,7 @@ import { SettingsManagementView } from './components/SettingsManagementView';
 import { ConnectionSettingsView } from './components/ConnectionSettingsView';
 import { CompanySettingsView } from './components/CompanySettingsView';
 import { UpdateSettingsView } from './components/UpdateSettingsView';
-import { UsersManagementView } from './components/UsersManagementView';
 import { ActivityLogView } from './components/ActivityLogView';
-import { TechnicalServicesView } from './components/TechnicalServicesView';
-import { FreelanceDevView } from './components/FreelanceDevView';
 import { InteractiveTestSandbox } from './components/InteractiveTestSandbox';
 import { ModuleViewer } from './components/ModuleViewer';
 import { FinancialCalculator } from './components/FinancialCalculator';
@@ -252,11 +249,7 @@ export default function App() {
 
             {/* 6. اداره المبيعات */}
             {activeTab === 'sales' && (
-              <div className="space-y-8">
-                <SalesAndPosView />
-                <TechnicalServicesView />
-                <FreelanceDevView />
-              </div>
+              <SalesAndPosView />
             )}
 
             {/* 7. اداره تقارير */}
