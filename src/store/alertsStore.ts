@@ -85,11 +85,11 @@ class AlertsStore {
     // 2. Setup Server-Sent Events (SSE) for Real-time push updates
     this.initEventSource();
 
-    // 3. Setup Fallback Polling Mechanism (Every 6 seconds)
+    // 3. Setup Fallback Polling Mechanism (Every 60 seconds instead of 6s)
     if (typeof window !== 'undefined') {
       this.pollingIntervalId = setInterval(() => {
         this.fetchAlertsFromBackend();
-      }, 6000);
+      }, 60000);
     }
   }
 
@@ -161,6 +161,9 @@ class AlertsStore {
   private processBackendData(json: BackendAuditResponse) {
     if (!json.alerts || !Array.isArray(json.alerts)) return;
 
+    // Keep track of locally read IDs so backend poll doesn't revert them to unread
+    const currentlyReadIds = new Set(this.alerts.filter(a => a.isRead).map(a => a.id));
+
     const transformed: SystemAlert[] = json.alerts.map(item => ({
       id: item.id,
       title: item.title,
@@ -171,7 +174,7 @@ class AlertsStore {
       timestamp: item.timestamp || new Date().toISOString(),
       targetTab: item.targetTab || 'products',
       actionLabel: item.actionLabel || 'معاينة التفاصيل',
-      isRead: !!item.isRead,
+      isRead: currentlyReadIds.has(item.id) ? true : !!item.isRead,
       metadata: {
         itemCode: item.code || item.metadata?.itemCode,
         itemName: item.name || item.metadata?.itemName,

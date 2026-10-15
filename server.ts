@@ -457,6 +457,82 @@ app.post('/api/settings/backup/import', async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// System Updates & GitHub Synchronization API
+// -------------------------------------------------------------
+const CURRENT_VERSION = 'v1.0.0';
+const GITHUB_REPO = 'Yourii2/DragonStore';
+
+app.get('/api/system/version', (req, res) => {
+  res.json({
+    success: true,
+    currentVersion: CURRENT_VERSION,
+    repoUrl: `https://github.com/${GITHUB_REPO}.git`
+  });
+});
+
+app.get('/api/system/check-updates', async (req, res) => {
+  try {
+    // Check latest release or tags from GitHub public API
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: { 'User-Agent': 'DragonStore-ERP-Updater' }
+    });
+
+    if (response.ok) {
+      const release: any = await response.json();
+      const latestTag = release.tag_name || release.name;
+      const hasUpdate = latestTag && latestTag.replace(/^v/, '') > CURRENT_VERSION.replace(/^v/, '');
+
+      return res.json({
+        success: true,
+        currentVersion: CURRENT_VERSION,
+        latestVersion: latestTag || CURRENT_VERSION,
+        hasUpdate: !!hasUpdate,
+        releaseNotes: release.body || 'لا توجد ملاحظات إصدار إضافية',
+        publishedAt: release.published_at,
+        downloadUrl: release.html_url
+      });
+    }
+
+    // Fallback: check repository tags
+    const tagsRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/tags`, {
+      headers: { 'User-Agent': 'DragonStore-ERP-Updater' }
+    });
+
+    if (tagsRes.ok) {
+      const tags: any = await tagsRes.json();
+      if (Array.isArray(tags) && tags.length > 0) {
+        const latestTag = tags[0].name;
+        const hasUpdate = latestTag && latestTag.replace(/^v/, '') > CURRENT_VERSION.replace(/^v/, '');
+        return res.json({
+          success: true,
+          currentVersion: CURRENT_VERSION,
+          latestVersion: latestTag,
+          hasUpdate: !!hasUpdate,
+          releaseNotes: `أحدث وسم مسجل على GitHub: ${latestTag}`,
+          publishedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      currentVersion: CURRENT_VERSION,
+      latestVersion: CURRENT_VERSION,
+      hasUpdate: false,
+      releaseNotes: 'أنت تعمل حالياً بأحدث إصدار مستقر من النظام'
+    });
+  } catch (err: any) {
+    res.json({
+      success: true,
+      currentVersion: CURRENT_VERSION,
+      latestVersion: CURRENT_VERSION,
+      hasUpdate: false,
+      message: 'تعذر الاتصال بـ GitHub للتحقق: ' + err.message
+    });
+  }
+});
+
 app.post('/api/system/test-db', async (req, res) => {
   const { host, port, database, username, password } = req.body;
   try {

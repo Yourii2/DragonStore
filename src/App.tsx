@@ -24,6 +24,7 @@ import { CategoriesManagementView } from './components/CategoriesManagementView'
 import { SettingsManagementView } from './components/SettingsManagementView';
 import { ConnectionSettingsView } from './components/ConnectionSettingsView';
 import { CompanySettingsView } from './components/CompanySettingsView';
+import { UpdateSettingsView } from './components/UpdateSettingsView';
 import { UsersManagementView } from './components/UsersManagementView';
 import { ActivityLogView } from './components/ActivityLogView';
 import { TechnicalServicesView } from './components/TechnicalServicesView';
@@ -325,10 +326,7 @@ export default function App() {
             )}
 
             {activeTab === 'settings_update' && (
-              <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
-                <h3 className="text-base font-black text-slate-800 dark:text-slate-200">إعدادات التحديث</h3>
-                <p className="text-xs text-slate-500 mt-1">سيتم تفعيل شاشة التحديثات والترقية لاحقاً.</p>
-              </div>
+              <UpdateSettingsView />
             )}
 
             {activeTab === 'settings' && (

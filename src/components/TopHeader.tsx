@@ -73,7 +73,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const notifContainerRef = useRef<HTMLDivElement>(null);
   const userMenuContainerRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to reactive alertsStore state updates (SSE / Polling)
+  // Keep track of alert IDs already shown as floating toasts
+  const shownToastIdsRef = useRef<Set<string>>(new Set());
+
+  // Subscribe to reactive alertsStore state updates
   useEffect(() => {
     const unsubscribe = alertsStore.subscribe(() => {
       const updated = alertsStore.getAlerts();
@@ -81,10 +84,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       setIsConnected(alertsStore.getIsConnected());
       setLastSync(alertsStore.getLastSyncTime());
 
-      // Check if there is a fresh unread alert to display in floating toast
-      const latestUnread = updated.find(a => !a.isRead && (a.category === 'LOW_STOCK' || a.category === 'OVERDUE_MILESTONE'));
+      // Only show toast if it is a truly new unread alert that has never toasted before
+      const latestUnread = updated.find(a => 
+        !a.isRead && 
+        !shownToastIdsRef.current.has(a.id) &&
+        (a.category === 'LOW_STOCK' || a.category === 'OVERDUE_MILESTONE')
+      );
+
       if (latestUnread && !showNotifications) {
+        shownToastIdsRef.current.add(latestUnread.id);
         setFloatingToast(latestUnread);
+
+        // Auto dismiss toast after 6 seconds so it doesn't stay indefinitely
+        setTimeout(() => {
+          setFloatingToast(prev => (prev?.id === latestUnread.id ? null : prev));
+        }, 6000);
       }
     });
 
@@ -332,15 +346,19 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                           <RefreshCcw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
                         </button>
 
-                        {unreadCount > 0 && (
-                          <button
-                            onClick={handleMarkAllRead}
-                            className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer bg-cyan-950/40 px-2.5 py-1.5 rounded-lg border border-cyan-800/40 transition-colors"
-                          >
-                            <CheckCheck className="w-3.5 h-3.5" />
-                            <span>تحديد الكل</span>
-                          </button>
-                        )}
+                        <button
+                          onClick={handleMarkAllRead}
+                          disabled={unreadCount === 0}
+                          className={`text-[10px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
+                            unreadCount > 0
+                              ? 'text-cyan-400 hover:text-cyan-300 bg-cyan-950/40 border-cyan-800/60 shadow-sm shadow-cyan-950/50'
+                              : 'text-slate-500 bg-slate-900 border-slate-800 cursor-not-allowed opacity-60'
+                          }`}
+                          title="تحديد كافة التنبيهات كمقروءة"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5" />
+                          <span>تحديد الكل كمقروء</span>
+                        </button>
                       </div>
                     </div>
 
@@ -482,10 +500,25 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                   </span>
                                 )}
                                 {item.actionLabel && (
-                                  <span className="text-cyan-400 font-bold flex items-center gap-0.5 mr-auto group-hover:underline">
+                                  <span className="text-cyan-400 font-bold flex items-center gap-0.5 group-hover:underline">
                                     <span>{item.actionLabel}</span>
                                     <ChevronLeft className="w-3 h-3" />
                                   </span>
+                                )}
+
+                                {!item.isRead && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      alertsStore.markAsRead(item.id);
+                                    }}
+                                    className="mr-auto text-[10px] text-slate-400 hover:text-cyan-400 hover:bg-cyan-950/40 px-2 py-0.5 rounded border border-slate-700/60 hover:border-cyan-500/40 flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="تحديد هذا الإشعار كمقروء"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3 text-cyan-400" />
+                                    <span>مقروء</span>
+                                  </button>
                                 )}
                               </div>
                             </div>
