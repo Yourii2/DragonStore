@@ -27,10 +27,20 @@ import {
 
 export type ReportType = 'sales' | 'inventory' | 'treasury' | 'customers' | 'suppliers' | 'expenses' | 'pnl';
 
-export const AccountingReportsView: React.FC = () => {
-  const [activeReport, setActiveReport] = useState<ReportType>('sales');
+interface AccountingReportsViewProps {
+  initialReport?: ReportType;
+}
+
+export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ initialReport = 'sales' }) => {
+  const [activeReport, setActiveReport] = useState<ReportType>(initialReport);
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
+
+  useEffect(() => {
+    if (initialReport) {
+      setActiveReport(initialReport);
+    }
+  }, [initialReport]);
 
   // Filter States
   const [startDate, setStartDate] = useState(() => {
@@ -158,10 +168,18 @@ export const AccountingReportsView: React.FC = () => {
           </span>
           <div>
             <h2 className="text-xl font-black text-slate-100 flex items-center gap-2">
-              <span>مركز التقارير الشامل والتحليلات المالية والتشغيلية</span>
+              <span>
+                {activeReport === 'sales' && 'تقرير المبيعات والفواتير والأرباح التشغيلية'}
+                {activeReport === 'inventory' && 'تقرير تقييم المخزون والبضاعة والنواقص'}
+                {activeReport === 'treasury' && 'تقرير حركات وسندات الخزائن والتدفقات النقدية'}
+                {activeReport === 'customers' && 'تقرير كشف حسابات وأرصدة العملاء والديون'}
+                {activeReport === 'suppliers' && 'تقرير كشف حسابات ومستحقات الموردين'}
+                {activeReport === 'expenses' && 'تقرير تحليل وتوزيع المصروفات التشغيلية'}
+                {activeReport === 'pnl' && 'قائمة الدخل والأرباح والخسائر الختامية (P&L)'}
+              </span>
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              منظومة تقارير متكاملة تدعم الفلترة الدقيقة، الحسابات الختامية، الطباعة المباشرة، والتصدير بجودة فائقة
+              تقرير معتمد من قاعدة البيانات يدعم الفلترة المتقدمة، الحسابات الدقيقة، الطباعة، والتصدير إلى Excel
             </p>
           </div>
         </div>
@@ -184,41 +202,6 @@ export const AccountingReportsView: React.FC = () => {
             <span>تصدير Excel (CSV)</span>
           </button>
         </div>
-      </div>
-
-      {/* Report Categories Navigation */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 print:hidden">
-        {[
-          { id: 'sales', label: 'تقارير المبيعات', icon: Receipt, color: 'from-blue-600 to-cyan-600' },
-          { id: 'inventory', label: 'تقارير المخزون', icon: Boxes, color: 'from-amber-600 to-orange-600' },
-          { id: 'treasury', label: 'حركات الخزينة', icon: Coins, color: 'from-emerald-600 to-teal-600' },
-          { id: 'customers', label: 'أرصدة العملاء', icon: Users, color: 'from-indigo-600 to-blue-600' },
-          { id: 'suppliers', label: 'أرصدة الموردين', icon: Truck, color: 'from-rose-600 to-pink-600' },
-          { id: 'expenses', label: 'سجل المصروفات', icon: DollarSign, color: 'from-violet-600 to-purple-600' },
-          { id: 'pnl', label: 'الأرباح والخسائر', icon: TrendingUp, color: 'from-emerald-600 to-cyan-600' },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeReport === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveReport(tab.id as ReportType)}
-              className={`p-3 rounded-2xl border text-right transition-all flex flex-col justify-between gap-2 cursor-pointer ${
-                isActive 
-                  ? 'bg-slate-900 border-cyan-500 shadow-lg shadow-cyan-950/40 text-slate-100 ring-1 ring-cyan-500/50' 
-                  : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:bg-slate-900 hover:text-slate-200'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className={`p-2 rounded-xl text-white bg-gradient-to-br ${tab.color} shadow-sm`}>
-                  <Icon className="w-4 h-4" />
-                </span>
-                {isActive && <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />}
-              </div>
-              <span className="text-xs font-bold truncate">{tab.label}</span>
-            </button>
-          );
-        })}
       </div>
 
       {/* Advanced Filter Toolbar */}

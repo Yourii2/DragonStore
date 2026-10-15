@@ -27,7 +27,8 @@ import {
   Radio,
   Building,
   CheckCircle,
-  Download
+  Download,
+  TrendingUp
 } from 'lucide-react';
 
 interface SubMenuItem {
@@ -123,7 +124,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: FileSpreadsheet, 
       isDropdown: true,
       children: [
-        { id: 'reports', label: 'جميع التقارير', icon: FileSpreadsheet }
+        { id: 'reports_sales', label: 'تقرير المبيعات والارباح', icon: Receipt },
+        { id: 'reports_inventory', label: 'تقرير تقييم المخزون والنواقص', icon: Warehouse },
+        { id: 'reports_treasury', label: 'تقرير حركات الخزائن والسيوله', icon: Coins },
+        { id: 'reports_customers', label: 'تقرير ارصده العملاء والديون', icon: Users },
+        { id: 'reports_suppliers', label: 'تقرير ارصده ومستحقات الموردين', icon: Truck },
+        { id: 'reports_expenses', label: 'تقرير سجل وتحليل المصروفات', icon: CircleDollarSign },
+        { id: 'reports_pnl', label: 'قائمه الارباح والخسائر (P&L)', icon: TrendingUp }
       ]
     },
     { 

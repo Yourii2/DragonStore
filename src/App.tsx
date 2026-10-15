@@ -28,7 +28,6 @@ import { UpdateSettingsView } from './components/UpdateSettingsView';
 import { UsersManagementView } from './components/UsersManagementView';
 import { UserProfileView } from './components/UserProfileView';
 import { ActivityLogView } from './components/ActivityLogView';
-import { InteractiveTestSandbox } from './components/InteractiveTestSandbox';
 import { ModuleViewer } from './components/ModuleViewer';
 import { FinancialCalculator } from './components/FinancialCalculator';
 import { DataFlowExplorer } from './components/DataFlowExplorer';
@@ -234,10 +233,35 @@ export default function App() {
 
             {/* 7. اداره تقارير */}
             {activeTab === 'reports' && (
-              <div className="space-y-8">
-                <AccountingReportsView />
-                <InteractiveTestSandbox />
-              </div>
+              <AccountingReportsView initialReport="sales" />
+            )}
+
+            {activeTab === 'reports_sales' && (
+              <AccountingReportsView initialReport="sales" />
+            )}
+
+            {activeTab === 'reports_inventory' && (
+              <AccountingReportsView initialReport="inventory" />
+            )}
+
+            {activeTab === 'reports_treasury' && (
+              <AccountingReportsView initialReport="treasury" />
+            )}
+
+            {activeTab === 'reports_customers' && (
+              <AccountingReportsView initialReport="customers" />
+            )}
+
+            {activeTab === 'reports_suppliers' && (
+              <AccountingReportsView initialReport="suppliers" />
+            )}
+
+            {activeTab === 'reports_expenses' && (
+              <AccountingReportsView initialReport="expenses" />
+            )}
+
+            {activeTab === 'reports_pnl' && (
+              <AccountingReportsView initialReport="pnl" />
             )}
 
             {/* 8. اداره الماليات و الخزائن والمعاملات */}
