@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { systemAuthStore, hasPermission, hasFinancialPermission } from '../store/systemAuthStore';
 import { 
   Landmark, 
   Search, 
@@ -26,6 +27,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import SearchableSelect from './SearchableSelect';
 
 export interface TreasuryAccount {
   id: string;
@@ -59,6 +61,10 @@ export interface FinancialTransactionItem {
 }
 
 export const TreasuryManagementView: React.FC = () => {
+  const currentUser = systemAuthStore.currentUser;
+  const userAssignedTreasury = currentUser?.assignedTreasury;
+  const isRestrictedTreasury = currentUser?.role !== 'SUPER_ADMIN' && Boolean(userAssignedTreasury) && userAssignedTreasury !== 'ALL';
+
   const [accounts, setAccounts] = useState<TreasuryAccount[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -89,7 +95,11 @@ export const TreasuryManagementView: React.FC = () => {
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
-          setAccounts(json.data.map((a: any) => ({
+          let list = json.data;
+          if (isRestrictedTreasury) {
+            list = list.filter((a: any) => a.id === userAssignedTreasury || a.name === userAssignedTreasury);
+          }
+          setAccounts(list.map((a: any) => ({
             id: a.id,
             account_code: a.account_code || a.code || '',
             name: a.name,
@@ -323,6 +333,7 @@ export const TreasuryManagementView: React.FC = () => {
 
         {/* Action Buttons: Add, Print, Export PDF, Export Excel */}
         <div className="flex flex-wrap items-center gap-2">
+          {hasPermission(currentUser, 'treasury', 'add') && (
           <button
             onClick={() => {
               setEditingAccount(null);
@@ -339,7 +350,9 @@ export const TreasuryManagementView: React.FC = () => {
             <Plus className="w-4 h-4" />
             <span>إضافة خزينة / حساب مالي</span>
           </button>
+          )}
 
+          {hasPermission(currentUser, 'treasury', 'print') && (
           <button
             onClick={handlePrint}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
@@ -347,22 +360,27 @@ export const TreasuryManagementView: React.FC = () => {
             <Printer className="w-4 h-4 text-slate-500" />
             <span>طباعة</span>
           </button>
+          )}
 
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-          >
-            <FileDown className="w-4 h-4 text-rose-500" />
-            <span>تصدير PDF</span>
-          </button>
+          {hasPermission(currentUser, 'treasury', 'export') && (
+            <>
+              <button
+                onClick={handleExportPDF}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+              >
+                <FileDown className="w-4 h-4 text-rose-500" />
+                <span>تصدير PDF</span>
+              </button>
 
-          <button
-            onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-            <span>تصدير إكسيل</span>
-          </button>
+              <button
+                onClick={handleExportExcel}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                <span>تصدير إكسيل</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -503,6 +521,7 @@ export const TreasuryManagementView: React.FC = () => {
                         </button>
 
                         {/* تعديل */}
+                        {hasPermission(currentUser, 'treasury', 'edit') && (
                         <button
                           onClick={() => {
                             setEditingAccount(a);
@@ -519,8 +538,10 @@ export const TreasuryManagementView: React.FC = () => {
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
+                        )}
 
                         {/* حذف */}
+                        {hasPermission(currentUser, 'treasury', 'delete') && (
                         <button
                           onClick={() => handleDeleteAccount(a)}
                           className="p-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-rose-500/20 transition-all cursor-pointer"
@@ -528,6 +549,7 @@ export const TreasuryManagementView: React.FC = () => {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -576,7 +598,7 @@ export const TreasuryManagementView: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   نوع الحساب: <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <SearchableSelect
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-bold"
@@ -584,7 +606,7 @@ export const TreasuryManagementView: React.FC = () => {
                   <option value="CASH">صندوق نقدية (كاشير / خزينة)</option>
                   <option value="BANK">حساب بنكي جاري</option>
                   <option value="WALLET">محفظة إلكترونية (Instapay / Vodafone Cash)</option>
-                </select>
+                </SearchableSelect>
               </div>
 
               <div>

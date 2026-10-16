@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import SearchableSelect from './SearchableSelect';
 
 export interface AccountOption {
   id: string;
@@ -437,7 +438,7 @@ export const FinancialTransactionsView: React.FC = () => {
         {/* Account Selector */}
         <div className="sm:w-64 bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-2">
           <Landmark className="w-4 h-4 text-slate-400 mr-1" />
-          <select
+          <SearchableSelect
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
             className="w-full bg-transparent text-xs text-slate-900 dark:text-slate-100 focus:outline-none font-bold"
@@ -448,12 +449,12 @@ export const FinancialTransactionsView: React.FC = () => {
                 {acc.name} ({acc.account_code})
               </option>
             ))}
-          </select>
+          </SearchableSelect>
         </div>
 
         {/* Flow Selector */}
         <div className="sm:w-48 bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-2">
-          <select
+          <SearchableSelect
             value={selectedFlow}
             onChange={(e) => setSelectedFlow(e.target.value)}
             className="w-full bg-transparent text-xs text-slate-900 dark:text-slate-100 focus:outline-none font-bold"
@@ -462,7 +463,7 @@ export const FinancialTransactionsView: React.FC = () => {
             <option value="IN">وارد / إيداعات فقط (+)</option>
             <option value="OUT">منصرف / سداد فقط (-)</option>
             <option value="TRANSFER">تحويلات بين الخزائن</option>
-          </select>
+          </SearchableSelect>
         </div>
 
         {/* Search Input Bar */}
@@ -602,7 +603,7 @@ export const FinancialTransactionsView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     اتجاه الحركة: <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     value={txForm.flow}
                     onChange={(e) => {
                       const flow = e.target.value as 'IN' | 'OUT' | 'TRANSFER';
@@ -617,14 +618,14 @@ export const FinancialTransactionsView: React.FC = () => {
                     <option value="IN">قبض / إيداع نقدي (+)</option>
                     <option value="OUT">صرف / سداد نقدي (-)</option>
                     <option value="TRANSFER">تحويل بين الخزائن</option>
-                  </select>
+                  </SearchableSelect>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {txForm.flow === 'TRANSFER' ? 'الخزينة المحول منها:' : 'الخزينة / الحساب:'} <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={txForm.account_id}
                     onChange={(e) => setTxForm({ ...txForm, account_id: e.target.value })}
@@ -636,7 +637,7 @@ export const FinancialTransactionsView: React.FC = () => {
                         {acc.name} ({acc.balance.toLocaleString()} ج.م)
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                 </div>
               </div>
 
@@ -645,7 +646,7 @@ export const FinancialTransactionsView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     الخزينة المحول إليها: <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={txForm.to_account_id}
                     onChange={(e) => setTxForm({ ...txForm, to_account_id: e.target.value })}
@@ -657,7 +658,7 @@ export const FinancialTransactionsView: React.FC = () => {
                         {acc.name} ({acc.balance.toLocaleString()} ج.م)
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                 </div>
               )}
 
@@ -710,7 +711,7 @@ export const FinancialTransactionsView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     طريقة الدفع:
                   </label>
-                  <select
+                  <SearchableSelect
                     value={txForm.payment_method}
                     onChange={(e) => setTxForm({ ...txForm, payment_method: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
@@ -719,7 +720,7 @@ export const FinancialTransactionsView: React.FC = () => {
                     <option value="BANK_TRANSFER">تحويل بنكي</option>
                     <option value="INSTAPAY">انستاباي (InstaPay)</option>
                     <option value="VODAFONE_CASH">فودافون كاش ومحافظ</option>
-                  </select>
+                  </SearchableSelect>
                 </div>
               </div>
 

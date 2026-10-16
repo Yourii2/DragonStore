@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS users (
   role VARCHAR(50) NOT NULL DEFAULT 'SUPER_ADMIN',
   role_title_ar VARCHAR(100) NOT NULL DEFAULT 'المدير العام والمالك',
   accessible_units VARCHAR(100) NOT NULL DEFAULT 'BOTH',
+  permissions LONGTEXT NULL,
+  assigned_warehouse VARCHAR(150) NOT NULL DEFAULT 'ALL',
+  assigned_treasury VARCHAR(150) NOT NULL DEFAULT 'ALL',
+  financial_permissions LONGTEXT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -219,6 +223,19 @@ CREATE TABLE IF NOT EXISTS internet_subscribers (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS network_transactions (
+  id VARCHAR(50) PRIMARY KEY,
+  type ENUM('INCOME', 'EXPENSE') NOT NULL,
+  amount DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+  treasury_id VARCHAR(50) NOT NULL,
+  treasury_name VARCHAR(150) NOT NULL,
+  reason TEXT NOT NULL,
+  subscriber_name VARCHAR(200) NULL,
+  phone VARCHAR(50) NULL,
+  date DATE NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS freelance_projects (
   id VARCHAR(50) PRIMARY KEY,
   title VARCHAR(200) NOT NULL,
@@ -266,6 +283,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   action VARCHAR(50) NOT NULL,
   module VARCHAR(100) NOT NULL,
   table_name VARCHAR(100) NOT NULL,
+  record_id VARCHAR(100) NULL DEFAULT '',
   details TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

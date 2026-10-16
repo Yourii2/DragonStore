@@ -21,9 +21,12 @@ import { StockInView } from './components/StockInView';
 import { StockReturnView } from './components/StockReturnView';
 import { StockTransferView } from './components/StockTransferView';
 import { CategoriesManagementView } from './components/CategoriesManagementView';
+import { NetworkManagementView } from './components/NetworkManagementView';
 import { SettingsManagementView } from './components/SettingsManagementView';
 import { ConnectionSettingsView } from './components/ConnectionSettingsView';
 import { CompanySettingsView } from './components/CompanySettingsView';
+import { PrintSettingsView } from './components/PrintSettingsView';
+import { ActivationSettingsView } from './components/ActivationSettingsView';
 import { UpdateSettingsView } from './components/UpdateSettingsView';
 import { UsersManagementView } from './components/UsersManagementView';
 import { UserProfileView } from './components/UserProfileView';
@@ -37,8 +40,10 @@ import { ExportModal } from './components/ExportModal';
 import { InstallationWizard } from './components/InstallationWizard';
 import { LoginPage } from './components/LoginPage';
 import { LiveSystemVerificationHub } from './components/LiveSystemVerificationHub';
-import { systemAuthStore, CurrentUser } from './store/systemAuthStore';
-import { Database, Zap } from 'lucide-react';
+import { UserPermissionsView } from './components/UserPermissionsView';
+import { MinimalDashboardView } from './components/MinimalDashboardView';
+import { systemAuthStore, CurrentUser, hasPermission } from './store/systemAuthStore';
+import { Database, Zap, Lock } from 'lucide-react';
 
 export default function App() {
   const [isInstalled, setIsInstalled] = useState<boolean>(systemAuthStore.installationState.isInstalled);
@@ -74,6 +79,21 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const handleSettingsUpdated = (e: any) => {
+      if (e?.detail) {
+        if (e.detail.show_network_page === false && (activeTab === 'network_page' || activeTab === 'reports_network')) {
+          setActiveTab('dashboard');
+        }
+        if (e.detail.show_software_features === false && activeTab === 'reports_software') {
+          setActiveTab('dashboard');
+        }
+      }
+    };
+    window.addEventListener('company-settings-updated', handleSettingsUpdated);
+    return () => window.removeEventListener('company-settings-updated', handleSettingsUpdated);
+  }, [activeTab]);
 
   const handleInstallationComplete = () => {
     setIsInstalled(true);
@@ -147,6 +167,7 @@ export default function App() {
         onClose={() => setIsSidebarOpen(false)}
         isDarkMode={isDarkMode}
         onLogout={handleLogout}
+        currentUser={currentUser}
       />
 
       {/* Main Content Area: Responsive to Sidebar state on Desktop & Mobile */}
@@ -175,15 +196,39 @@ export default function App() {
 
         {/* Main Body Container */}
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          {/* Render Active View according to exact requested items */}
-          <div className="transition-all duration-300">
+          {(!currentUser || (currentUser.role !== 'SUPER_ADMIN' && activeTab !== 'dashboard' && activeTab !== 'profile' && !hasPermission(currentUser, activeTab, 'view'))) ? (
+            <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-rose-200 dark:border-rose-900/40 shadow-sm max-w-lg mx-auto my-12 animate-fadeIn">
+              <div className="w-16 h-16 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4 border border-rose-500/20">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">غير مصرح لك بالوصول إلى هذه الشاشة</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                تم حظر صلاحية عرض هذه الصفحة لحسابك بواسطة مسؤول النظام. يرجى مراجعة إدارة النظام لتفعيل الصلاحية لك.
+              </p>
+              <button
+                onClick={() => {
+                  setActiveTab('dashboard');
+                  scrollToTop();
+                }}
+                className="mt-6 px-6 py-2.5 rounded-2xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white font-black text-xs transition-all cursor-pointer shadow-md"
+              >
+                العودة إلى الصفحة الرئيسية
+              </button>
+            </div>
+          ) : (
+            /* Render Active View according to exact requested items */
+            <div className="transition-all duration-300">
             
             {/* 1. الصفحه الرئيسيه */}
             {activeTab === 'dashboard' && (
-              <ModernDashboardView onNavigate={(tab) => {
-                setActiveTab(tab);
-                scrollToTop();
-              }} />
+              hasPermission(currentUser, 'dashboard', 'view') ? (
+                <ModernDashboardView onNavigate={(tab) => {
+                  setActiveTab(tab);
+                  scrollToTop();
+                }} />
+              ) : (
+                <MinimalDashboardView currentUser={currentUser} />
+              )
             )}
 
             {/* 2. اداره المنتجات و المخازن و التصنيفات */}
@@ -236,15 +281,7 @@ export default function App() {
             )}
 
             {activeTab === 'network_page' && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 mx-auto flex items-center justify-center">
-                  <Database className="w-8 h-8" />
-                </div>
-                <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">إدارة الشبكة والمشتركين</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                  تم تفعيل ظهور هذه الصفحة بنجاح من إعدادات الشركة. سيتم تفعيل خصائصها وربطها الكامل بالشبكة لاحقاً.
-                </p>
-              </div>
+              <NetworkManagementView />
             )}
 
             {/* 7. اداره تقارير */}
@@ -254,6 +291,22 @@ export default function App() {
 
             {activeTab === 'reports_sales' && (
               <AccountingReportsView initialReport="sales" />
+            )}
+
+            {activeTab === 'reports_physical' && (
+              <AccountingReportsView initialReport="physical" />
+            )}
+
+            {activeTab === 'reports_maintenance' && (
+              <AccountingReportsView initialReport="maintenance" />
+            )}
+
+            {activeTab === 'reports_software' && (
+              <AccountingReportsView initialReport="software" />
+            )}
+
+            {activeTab === 'reports_network' && (
+              <AccountingReportsView initialReport="network" />
             )}
 
             {activeTab === 'reports_inventory' && (
@@ -323,10 +376,7 @@ export default function App() {
             )}
 
             {activeTab === 'user_permissions' && (
-              <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
-                <h3 className="text-base font-black text-slate-800 dark:text-slate-200">صلاحيات المستخدمين</h3>
-                <p className="text-xs text-slate-500 mt-1">سيتم تفعيل شاشة الصلاحيات لاحقاً بعد استكمال باقي الأقسام.</p>
-              </div>
+              <UserPermissionsView />
             )}
 
             {/* 11. الاعدادات (اتصال، شركه، تفعيل، تحديث) */}
@@ -338,11 +388,12 @@ export default function App() {
               <CompanySettingsView />
             )}
 
+            {activeTab === 'settings_print' && (
+              <PrintSettingsView />
+            )}
+
             {activeTab === 'settings_activation' && (
-              <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
-                <h3 className="text-base font-black text-slate-800 dark:text-slate-200">إعدادات التفعيل</h3>
-                <p className="text-xs text-slate-500 mt-1">سيتم إنشاء وتفعيل شاشة التفعيل لاحقاً.</p>
-              </div>
+              <ActivationSettingsView />
             )}
 
             {activeTab === 'settings_update' && (
@@ -375,6 +426,7 @@ export default function App() {
             )}
 
           </div>
+          )}
 
         </main>
 

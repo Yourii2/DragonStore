@@ -24,8 +24,21 @@ import {
   PieChart,
   BarChart3
 } from 'lucide-react';
+import SearchableSelect from './SearchableSelect';
 
-export type ReportType = 'sales' | 'inventory' | 'treasury' | 'customers' | 'suppliers' | 'expenses' | 'pnl';
+
+export type ReportType = 
+  | 'sales' 
+  | 'physical' 
+  | 'maintenance' 
+  | 'software' 
+  | 'network' 
+  | 'inventory' 
+  | 'treasury' 
+  | 'customers' 
+  | 'suppliers' 
+  | 'expenses' 
+  | 'pnl';
 
 interface AccountingReportsViewProps {
   initialReport?: ReportType;
@@ -170,6 +183,10 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
             <h2 className="text-xl font-black text-slate-100 flex items-center gap-2">
               <span>
                 {activeReport === 'sales' && 'تقرير المبيعات والفواتير والأرباح التشغيلية'}
+                {activeReport === 'physical' && 'تقرير مبيعات وأرباح السلع والمنتجات المادية'}
+                {activeReport === 'maintenance' && 'تقرير أرباح الصيانة وخدمات الأجهزة وقطع الغيار'}
+                {activeReport === 'software' && 'تقرير مبيعات وأرباح البرمجيات والحلول السحابية'}
+                {activeReport === 'network' && 'تقرير أرباح وخسائر الشبكة والمشتركين حسب المدة'}
                 {activeReport === 'inventory' && 'تقرير تقييم المخزون والبضاعة والنواقص'}
                 {activeReport === 'treasury' && 'تقرير حركات وسندات الخزائن والتدفقات النقدية'}
                 {activeReport === 'customers' && 'تقرير كشف حسابات وأرصدة العملاء والديون'}
@@ -226,7 +243,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           
           {/* Start Date */}
-          {(activeReport === 'sales' || activeReport === 'treasury' || activeReport === 'expenses' || activeReport === 'pnl') && (
+          {(activeReport === 'sales' || activeReport === 'physical' || activeReport === 'maintenance' || activeReport === 'software' || activeReport === 'network' || activeReport === 'treasury' || activeReport === 'expenses' || activeReport === 'pnl') && (
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1">
                 <Calendar className="w-3 h-3 text-cyan-500" />
@@ -242,7 +259,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
           )}
 
           {/* End Date */}
-          {(activeReport === 'sales' || activeReport === 'treasury' || activeReport === 'expenses' || activeReport === 'pnl') && (
+          {(activeReport === 'sales' || activeReport === 'physical' || activeReport === 'maintenance' || activeReport === 'software' || activeReport === 'network' || activeReport === 'treasury' || activeReport === 'expenses' || activeReport === 'pnl') && (
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1">
                 <Calendar className="w-3 h-3 text-cyan-500" />
@@ -264,7 +281,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 <Boxes className="w-3 h-3 text-cyan-500" />
                 <span>المخزن:</span>
               </label>
-              <select
+              <SearchableSelect
                 value={warehouseFilter}
                 onChange={(e) => setWarehouseFilter(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
@@ -273,7 +290,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 {warehouses.map(w => (
                   <option key={w.id} value={w.name}>{w.name}</option>
                 ))}
-              </select>
+              </SearchableSelect>
             </div>
           )}
 
@@ -284,7 +301,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 <Layers className="w-3 h-3 text-cyan-500" />
                 <span>التصنيف:</span>
               </label>
-              <select
+              <SearchableSelect
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
@@ -293,7 +310,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 {categories.map(c => (
                   <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
-              </select>
+              </SearchableSelect>
             </div>
           )}
 
@@ -304,7 +321,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 <DollarSign className="w-3 h-3 text-cyan-500" />
                 <span>طريقة الدفع / النوع:</span>
               </label>
-              <select
+              <SearchableSelect
                 value={paymentTypeFilter}
                 onChange={(e) => setPaymentTypeFilter(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
@@ -315,7 +332,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 <option value="BANK_TRANSFER">تحويل بنكي</option>
                 <option value="RECEIPT">إيداع / سند قبض</option>
                 <option value="PAYMENT">صرف / سند دفع</option>
-              </select>
+              </SearchableSelect>
             </div>
           )}
 
@@ -326,7 +343,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 <AlertTriangle className="w-3 h-3 text-cyan-500" />
                 <span>الحالة:</span>
               </label>
-              <select
+              <SearchableSelect
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
@@ -357,7 +374,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                     <option value="settled">حسابات مسددة</option>
                   </>
                 )}
-              </select>
+              </SearchableSelect>
             </div>
           )}
 
@@ -368,7 +385,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 <Building className="w-3 h-3 text-cyan-500" />
                 <span>الوحدة التشغيلية:</span>
               </label>
-              <select
+              <SearchableSelect
                 value={unitFilter}
                 onChange={(e) => setUnitFilter(e.target.value as any)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
@@ -376,7 +393,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                 <option value="all">المتجر والمؤسسة بالكامل</option>
                 <option value="shop">المتجر والأجهزة (BU 1)</option>
                 <option value="freelance">البرمجيات الحرة (BU 2)</option>
-              </select>
+              </SearchableSelect>
             </div>
           )}
 

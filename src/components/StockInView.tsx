@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { systemAuthStore, hasPermission, getUserWarehouse } from '../store/systemAuthStore';
 import {
   ArrowDownLeft,
   Plus,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { SearchableSelect } from './SearchableSelect';
 
 interface Supplier {
   id: string;
@@ -78,6 +80,14 @@ interface MovementRecord {
 }
 
 export const StockInView: React.FC = () => {
+  const currentUser = systemAuthStore.currentUser;
+  const userWarehouse = getUserWarehouse(currentUser);
+  const isRestrictedWarehouse = currentUser?.role !== 'SUPER_ADMIN' && Boolean(userWarehouse) && userWarehouse !== 'ALL';
+
+  const canAdd = hasPermission(currentUser, 'stock_in', 'add');
+  const canPrint = hasPermission(currentUser, 'stock_in', 'print');
+  const canExport = hasPermission(currentUser, 'stock_in', 'export');
+
   // Master data
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>([]);
@@ -92,7 +102,7 @@ export const StockInView: React.FC = () => {
   // New Receiving Order Form state
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
-  const [targetWarehouse, setTargetWarehouse] = useState('');
+  const [targetWarehouse, setTargetWarehouse] = useState<string>(isRestrictedWarehouse ? userWarehouse : '');
   const [invoiceRefNo, setInvoiceRefNo] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
 
@@ -101,7 +111,7 @@ export const StockInView: React.FC = () => {
 
   // History filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterWarehouse, setFilterWarehouse] = useState('ALL');
+  const [filterWarehouse, setFilterWarehouse] = useState<string>(isRestrictedWarehouse ? userWarehouse : 'ALL');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [dateShortcut, setDateShortcut] = useState<DateShortcut>('ALL');
@@ -129,10 +139,12 @@ export const StockInView: React.FC = () => {
 
       if (suppData.success) setSuppliers(suppData.data || []);
       if (wareData.success) {
-        setWarehouses(wareData.data || []);
-        if (wareData.data?.length > 0 && !targetWarehouse) {
-          setTargetWarehouse(wareData.data[0].name);
+        let whs = wareData.data || [];
+        if (isRestrictedWarehouse) {
+          whs = whs.filter((w: any) => w.name === userWarehouse || w.id === userWarehouse);
         }
+        setWarehouses(whs);
+        setTargetWarehouse(isRestrictedWarehouse ? userWarehouse : (whs.length > 0 ? whs[0].name : ''));
       }
       if (prodData.success) setProducts(prodData.data || []);
       if (catData.success) setCategories(catData.data || []);
@@ -149,7 +161,8 @@ export const StockInView: React.FC = () => {
       let url = '/api/stock-movements?movementType=IN';
       if (fromDate) url += `&fromDate=${fromDate}`;
       if (toDate) url += `&toDate=${toDate}`;
-      if (filterWarehouse !== 'ALL') url += `&warehouse=${encodeURIComponent(filterWarehouse)}`;
+      const activeWh = isRestrictedWarehouse ? userWarehouse : filterWarehouse;
+      if (activeWh && activeWh !== 'ALL') url += `&warehouse=${encodeURIComponent(activeWh)}`;
 
       const res = await fetch(url);
       const data = await res.json();
@@ -171,7 +184,11 @@ export const StockInView: React.FC = () => {
 
   // Open modal with 1 fresh empty row
   const openNewReceiptModal = () => {
-    const defaultWh = warehouses.length > 0 ? warehouses[0].name : 'مخزن المتجر الرئيسي';
+    if (!canAdd) {
+      alert('ليس لديك صلاحية عمل إذن استلام بضائع جديد');
+      return;
+    }
+    const defaultWh = isRestrictedWarehouse ? userWarehouse : (warehouses.length > 0 ? warehouses[0].name : 'مخزن المتجر الرئيسي');
     setTargetWarehouse(defaultWh);
     setSelectedSupplierId('');
     setInvoiceRefNo(`REC-${Date.now().toString().slice(-6)}`);
@@ -390,15 +407,17 @@ export const StockInView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={openNewReceiptModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/25 transition-all cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إذن استلام بضاعة جديد</span>
-          </button>
-        </div>
+        {canAdd && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={openNewReceiptModal}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/25 transition-all cursor-pointer active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إذن استلام بضاعة جديد</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filter and Date Bar */}
@@ -417,16 +436,26 @@ export const StockInView: React.FC = () => {
 
           <div className="flex items-center gap-2 w-full md:w-auto">
             <Warehouse className="w-4 h-4 text-slate-400" />
-            <select
-              value={filterWarehouse}
+            <SearchableSelect
+              value={isRestrictedWarehouse ? userWarehouse : filterWarehouse}
+              disabled={isRestrictedWarehouse}
               onChange={e => setFilterWarehouse(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-cyan-500"
+              className={`bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-cyan-500 ${
+                isRestrictedWarehouse ? 'opacity-80 cursor-not-allowed' : ''
+              }`}
+              searchPlaceholder="ابحث عن مخزن..."
+              minWidth="min-w-[180px]"
             >
-              <option value="ALL">جميع المخازن المستلمة</option>
+              {!isRestrictedWarehouse && <option value="ALL">جميع المخازن المستلمة</option>}
               {warehouses.map(w => (
                 <option key={w.id} value={w.name}>{w.name}</option>
               ))}
-            </select>
+            </SearchableSelect>
+            {isRestrictedWarehouse && (
+              <span className="text-[10px] text-cyan-500 font-black px-2 py-1 bg-cyan-500/10 rounded-lg whitespace-nowrap">
+                مخزنك المحدد
+              </span>
+            )}
           </div>
         </div>
 
@@ -449,62 +478,66 @@ export const StockInView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const headers = ['رقم الإذن', 'التاريخ', 'المخزن المستلم', 'عدد الأصناف', 'إجمالي القطع', 'القيمة الإجمالية', 'الملاحظات'];
-                const rows = filteredBatches.map(b => [
-                  b.ref,
-                  new Date(b.date).toLocaleDateString('ar-EG'),
-                  b.target_warehouse || '—',
-                  b.itemsCount,
-                  b.totalQty,
-                  b.totalVal,
-                  b.notes || ''
-                ]);
-                exportToExcel('سجل_استلام_بضائع_موردين', headers, rows);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 cursor-pointer transition-colors"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>تصدير Excel</span>
-            </button>
-            <button
-              onClick={() => {
-                const tableHtml = `
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                      <tr style="background-color: #0891b2; color: #fff;">
-                        <th>رقم الإذن</th>
-                        <th>التاريخ</th>
-                        <th>المخزن</th>
-                        <th>عدد الأصناف</th>
-                        <th>إجمالي القطع</th>
-                        <th>القيمة الإجمالية</th>
-                        <th>البيان</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${filteredBatches.map(b => `
-                        <tr>
-                          <td style="text-align: center; font-weight: bold;">${b.ref}</td>
-                          <td style="text-align: center;">${new Date(b.date).toLocaleDateString('ar-EG')}</td>
-                          <td>${b.target_warehouse || '—'}</td>
-                          <td style="text-align: center;">${b.itemsCount} صنف</td>
-                          <td style="text-align: center; font-weight: bold;">${b.totalQty}</td>
-                          <td style="text-align: center; color: #059669; font-weight: bold;">${Number(b.totalVal).toLocaleString()} ج.م</td>
-                          <td>${b.notes || ''}</td>
+            {canExport && (
+              <button
+                onClick={() => {
+                  const headers = ['رقم الإذن', 'التاريخ', 'المخزن المستلم', 'عدد الأصناف', 'إجمالي القطع', 'القيمة الإجمالية', 'الملاحظات'];
+                  const rows = filteredBatches.map(b => [
+                    b.ref,
+                    new Date(b.date).toLocaleDateString('ar-EG'),
+                    b.target_warehouse || '—',
+                    b.itemsCount,
+                    b.totalQty,
+                    b.totalVal,
+                    b.notes || ''
+                  ]);
+                  exportToExcel('سجل_استلام_بضائع_موردين', headers, rows);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 cursor-pointer transition-colors"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+            )}
+            {canPrint && (
+              <button
+                onClick={() => {
+                  const tableHtml = `
+                    <table style="width: 100%; border-collapse: collapse;">
+                      <thead>
+                        <tr style="background-color: #0891b2; color: #fff;">
+                          <th>رقم الإذن</th>
+                          <th>التاريخ</th>
+                          <th>المخزن</th>
+                          <th>عدد الأصناف</th>
+                          <th>إجمالي القطع</th>
+                          <th>القيمة الإجمالية</th>
+                          <th>البيان</th>
                         </tr>
-                      `).join('')}
-                    </tbody>
-                  </table>
-                `;
-                printTableOrReceipt('تقرير أذونات استلام البضائع من الموردين', tableHtml);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>طباعة السجل</span>
-            </button>
+                      </thead>
+                      <tbody>
+                        ${filteredBatches.map(b => `
+                          <tr>
+                            <td style="text-align: center; font-weight: bold;">${b.ref}</td>
+                            <td style="text-align: center;">${new Date(b.date).toLocaleDateString('ar-EG')}</td>
+                            <td>${b.target_warehouse || '—'}</td>
+                            <td style="text-align: center;">${b.itemsCount} صنف</td>
+                            <td style="text-align: center; font-weight: bold;">${b.totalQty}</td>
+                            <td style="text-align: center; color: #059669; font-weight: bold;">${Number(b.totalVal).toLocaleString()} ج.م</td>
+                            <td>${b.notes || ''}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  `;
+                  printTableOrReceipt('تقرير أذونات استلام البضائع من الموردين', tableHtml);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>طباعة السجل</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -606,10 +639,11 @@ export const StockInView: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
                     المورد (اختياري):
                   </label>
-                  <select
+                  <SearchableSelect
                     value={selectedSupplierId}
                     onChange={e => setSelectedSupplierId(e.target.value)}
                     className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+                    searchPlaceholder="ابحث باسم المورد أو الشركة..."
                   >
                     <option value="">بدون تحديد مورد / نقدي فوري</option>
                     {suppliers.map(s => (
@@ -617,23 +651,34 @@ export const StockInView: React.FC = () => {
                         {s.name} {s.company ? `(${s.company})` : ''}
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                    المخزن المستلم: *
-                  </label>
-                  <select
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                      المخزن المستلم: *
+                    </label>
+                    {isRestrictedWarehouse && (
+                      <span className="text-[10px] text-cyan-500 font-black px-1.5 py-0.5 bg-cyan-500/10 rounded">
+                        مخزنك المحدد
+                      </span>
+                    )}
+                  </div>
+                  <SearchableSelect
                     required
-                    value={targetWarehouse}
+                    disabled={isRestrictedWarehouse}
+                    value={isRestrictedWarehouse ? userWarehouse : targetWarehouse}
                     onChange={e => setTargetWarehouse(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+                    className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 ${
+                      isRestrictedWarehouse ? 'opacity-80 cursor-not-allowed' : ''
+                    }`}
+                    searchPlaceholder="ابحث عن مخزن..."
                   >
                     {warehouses.map(w => (
                       <option key={w.id} value={w.name}>{w.name}</option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                 </div>
 
                 <div>
@@ -690,14 +735,15 @@ export const StockInView: React.FC = () => {
 
                         {/* New or Existing Selector */}
                         <td className="p-3">
-                          <select
+                          <SearchableSelect
                             value={it.isNewProduct ? 'NEW' : 'EXISTING'}
                             onChange={e => updateItem(it.id, 'isNewProduct', e.target.value === 'NEW')}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-[11px] font-bold focus:outline-none"
+                            searchPlaceholder="بحث..."
                           >
                             <option value="EXISTING">صنف موجود</option>
                             <option value="NEW">✨ صنف جديد</option>
-                          </select>
+                          </SearchableSelect>
                         </td>
 
                         {/* Product Selection / Input */}
@@ -712,11 +758,12 @@ export const StockInView: React.FC = () => {
                               className="w-full bg-amber-50/50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-700/60 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none"
                             />
                           ) : (
-                            <select
+                            <SearchableSelect
                               required
                               value={it.productId}
                               onChange={e => updateItem(it.id, 'productId', e.target.value)}
                               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none"
+                              searchPlaceholder="ابحث باسم المنتج أو الكود..."
                             >
                               <option value="">-- اختر المنتج من الكتالوج --</option>
                               {products.map(p => (
@@ -724,23 +771,24 @@ export const StockInView: React.FC = () => {
                                   {p.name} (رصيد حالي: {p.current_stock})
                                 </option>
                               ))}
-                            </select>
+                            </SearchableSelect>
                           )}
                         </td>
 
                         {/* Category */}
                         <td className="p-3">
                           {it.isNewProduct ? (
-                            <select
+                            <SearchableSelect
                               value={it.category}
                               onChange={e => updateItem(it.id, 'category', e.target.value)}
                               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs focus:outline-none"
+                              searchPlaceholder="ابحث عن تصنيف..."
                             >
                               <option value="عام">عام</option>
                               {categories.map(c => (
                                 <option key={c.id} value={c.name}>{c.name}</option>
                               ))}
-                            </select>
+                            </SearchableSelect>
                           ) : (
                             <span className="text-slate-500 font-bold text-xs">{it.category || '—'}</span>
                           )}
@@ -749,17 +797,18 @@ export const StockInView: React.FC = () => {
                         {/* Unit */}
                         <td className="p-3">
                           {it.isNewProduct ? (
-                            <select
+                            <SearchableSelect
                               value={it.unit}
                               onChange={e => updateItem(it.id, 'unit', e.target.value)}
                               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs focus:outline-none"
+                              searchPlaceholder="ابحث عن وحدة..."
                             >
                               <option value="قطعة">قطعة</option>
                               <option value="علبة">علبة</option>
                               <option value="كرتونة">كرتونة</option>
                               <option value="متر">متر</option>
                               <option value="طقم">طقم</option>
-                            </select>
+                            </SearchableSelect>
                           ) : (
                             <span className="text-slate-500 text-xs">{it.unit || 'قطعة'}</span>
                           )}
@@ -937,8 +986,9 @@ export const StockInView: React.FC = () => {
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
+                {canPrint && (
+                  <button
+                    type="button"
                   onClick={() => {
                     const tableHtml = `
                       <div style="font-family: 'Cairo', sans-serif; padding: 15px;">
@@ -979,7 +1029,8 @@ export const StockInView: React.FC = () => {
                   <Printer className="w-3.5 h-3.5" />
                   <span>طباعة إذن الاستلام</span>
                 </button>
-              </div>
+              )}
+            </div>
 
               <button
                 onClick={() => setSelectedBatchRef(null)}

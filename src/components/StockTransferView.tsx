@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { systemAuthStore, hasPermission, getUserWarehouse } from '../store/systemAuthStore';
 import {
   RefreshCw,
   Plus,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { SearchableSelect } from './SearchableSelect';
 
 interface WarehouseRecord {
   id: string;
@@ -66,6 +68,14 @@ interface MovementRecord {
 }
 
 export const StockTransferView: React.FC = () => {
+  const currentUser = systemAuthStore.currentUser;
+  const userWarehouse = getUserWarehouse(currentUser);
+  const isRestrictedWarehouse = currentUser?.role !== 'SUPER_ADMIN' && Boolean(userWarehouse) && userWarehouse !== 'ALL';
+
+  const canAdd = hasPermission(currentUser, 'stock_transfer', 'add');
+  const canPrint = hasPermission(currentUser, 'stock_transfer', 'print');
+  const canExport = hasPermission(currentUser, 'stock_transfer', 'export');
+
   // Master data
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -77,7 +87,7 @@ export const StockTransferView: React.FC = () => {
 
   // Transfer voucher modal state
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [sourceWarehouse, setSourceWarehouse] = useState('');
+  const [sourceWarehouse, setSourceWarehouse] = useState<string>(isRestrictedWarehouse ? userWarehouse : '');
   const [targetWarehouse, setTargetWarehouse] = useState('');
   const [transferRefNo, setTransferRefNo] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
@@ -87,7 +97,7 @@ export const StockTransferView: React.FC = () => {
 
   // History filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterWarehouse, setFilterWarehouse] = useState('ALL');
+  const [filterWarehouse, setFilterWarehouse] = useState<string>(isRestrictedWarehouse ? userWarehouse : 'ALL');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [dateShortcut, setDateShortcut] = useState<DateShortcut>('ALL');
@@ -112,11 +122,17 @@ export const StockTransferView: React.FC = () => {
       if (wareData.success) {
         const whs: WarehouseRecord[] = wareData.data || [];
         setWarehouses(whs);
-        if (whs.length >= 2) {
-          if (!sourceWarehouse) setSourceWarehouse(whs[0].name);
-          if (!targetWarehouse) setTargetWarehouse(whs[1].name);
-        } else if (whs.length === 1) {
-          if (!sourceWarehouse) setSourceWarehouse(whs[0].name);
+        if (isRestrictedWarehouse) {
+          setSourceWarehouse(userWarehouse);
+          const other = whs.find(w => w.name !== userWarehouse);
+          if (other) setTargetWarehouse(other.name);
+        } else {
+          if (whs.length >= 2) {
+            if (!sourceWarehouse) setSourceWarehouse(whs[0].name);
+            if (!targetWarehouse) setTargetWarehouse(whs[1].name);
+          } else if (whs.length === 1) {
+            if (!sourceWarehouse) setSourceWarehouse(whs[0].name);
+          }
         }
       }
       if (prodData.success) setProducts(prodData.data || []);
@@ -155,11 +171,16 @@ export const StockTransferView: React.FC = () => {
 
   // Open modal
   const openNewTransferModal = () => {
+    if (!canAdd) {
+      alert('ليس لديك صلاحية إنشاء إذن نقل وتحويل مخزني جديد');
+      return;
+    }
     if (warehouses.length < 2) {
       alert('يجب أن يتوفر على الأقل مخزنان في النظام لإتمام عملية النقل والتحويل بين المخازن');
     }
-    const src = warehouses.length > 0 ? warehouses[0].name : '';
-    const tgt = warehouses.length > 1 ? warehouses[1].name : '';
+    const src = isRestrictedWarehouse ? userWarehouse : (warehouses.length > 0 ? warehouses[0].name : '');
+    const otherWh = warehouses.find(w => w.name !== src);
+    const tgt = otherWh ? otherWh.name : '';
     setSourceWarehouse(src);
     setTargetWarehouse(tgt);
     setTransferRefNo(`TRF-${Date.now().toString().slice(-6)}`);
@@ -364,13 +385,15 @@ export const StockTransferView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={openNewTransferModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition-all cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إذن نقل وتحويل مخزني جديد</span>
-          </button>
+          {canAdd && (
+            <button
+              onClick={openNewTransferModal}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition-all cursor-pointer active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إذن نقل وتحويل مخزني جديد</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -390,16 +413,26 @@ export const StockTransferView: React.FC = () => {
 
           <div className="flex items-center gap-2 w-full md:w-auto">
             <Warehouse className="w-4 h-4 text-slate-400" />
-            <select
+            <SearchableSelect
               value={filterWarehouse}
               onChange={e => setFilterWarehouse(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500"
+              disabled={isRestrictedWarehouse}
+              className={`bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 ${
+                isRestrictedWarehouse ? 'opacity-80 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''
+              }`}
+              searchPlaceholder="ابحث عن مخزن..."
+              minWidth="min-w-[180px]"
             >
-              <option value="ALL">جميع المخازن (المصدر أو المستهدف)</option>
+              {!isRestrictedWarehouse && <option value="ALL">جميع المخازن (المصدر أو المستهدف)</option>}
               {warehouses.map(w => (
                 <option key={w.id} value={w.name}>{w.name}</option>
               ))}
-            </select>
+            </SearchableSelect>
+            {isRestrictedWarehouse && (
+              <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2 py-1 rounded-lg font-bold shrink-0">
+                مخزنك المحدد
+              </span>
+            )}
           </div>
         </div>
 
@@ -422,65 +455,69 @@ export const StockTransferView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const headers = ['رقم الإذن', 'التاريخ', 'من مخزن', 'إلى مخزن', 'عدد الأصناف', 'إجمالي القطع', 'القيمة التقديرية', 'البيان'];
-                const rows = filteredBatches.map(b => [
-                  b.ref,
-                  new Date(b.date).toLocaleDateString('ar-EG'),
-                  b.source_warehouse || '—',
-                  b.target_warehouse || '—',
-                  b.itemsCount,
-                  b.totalQty,
-                  b.totalVal,
-                  b.notes || ''
-                ]);
-                exportToExcel('سجل_مناقلات_المخازن', headers, rows);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 cursor-pointer transition-colors"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>تصدير Excel</span>
-            </button>
-            <button
-              onClick={() => {
-                const tableHtml = `
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                      <tr style="background-color: #2563eb; color: #fff;">
-                        <th>رقم الإذن</th>
-                        <th>التاريخ</th>
-                        <th>من مخزن</th>
-                        <th>إلى مخزن</th>
-                        <th>عدد الأصناف</th>
-                        <th>إجمالي القطع</th>
-                        <th>القيمة</th>
-                        <th>البيان</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${filteredBatches.map(b => `
-                        <tr>
-                          <td style="text-align: center; font-weight: bold;">${b.ref}</td>
-                          <td style="text-align: center;">${new Date(b.date).toLocaleDateString('ar-EG')}</td>
-                          <td>${b.source_warehouse || '—'}</td>
-                          <td>${b.target_warehouse || '—'}</td>
-                          <td style="text-align: center;">${b.itemsCount} صنف</td>
-                          <td style="text-align: center; font-weight: bold;">${b.totalQty}</td>
-                          <td style="text-align: center; color: #2563eb; font-weight: bold;">${Number(b.totalVal).toLocaleString()} ج.م</td>
-                          <td>${b.notes || ''}</td>
+            {canExport && (
+              <button
+                onClick={() => {
+                  const headers = ['رقم الإذن', 'التاريخ', 'من مخزن', 'إلى مخزن', 'عدد الأصناف', 'إجمالي القطع', 'القيمة التقديرية', 'البيان'];
+                  const rows = filteredBatches.map(b => [
+                    b.ref,
+                    new Date(b.date).toLocaleDateString('ar-EG'),
+                    b.source_warehouse || '—',
+                    b.target_warehouse || '—',
+                    b.itemsCount,
+                    b.totalQty,
+                    b.totalVal,
+                    b.notes || ''
+                  ]);
+                  exportToExcel('سجل_مناقلات_المخازن', headers, rows);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 cursor-pointer transition-colors"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+            )}
+            {canPrint && (
+              <button
+                onClick={() => {
+                  const tableHtml = `
+                    <table style="width: 100%; border-collapse: collapse;">
+                      <thead>
+                        <tr style="background-color: #2563eb; color: #fff;">
+                          <th>رقم الإذن</th>
+                          <th>التاريخ</th>
+                          <th>من مخزن</th>
+                          <th>إلى مخزن</th>
+                          <th>عدد الأصناف</th>
+                          <th>إجمالي القطع</th>
+                          <th>القيمة</th>
+                          <th>البيان</th>
                         </tr>
-                      `).join('')}
-                    </tbody>
-                  </table>
-                `;
-                printTableOrReceipt('تقرير أذونات النقل والتحويل بين المخازن', tableHtml);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>طباعة السجل</span>
-            </button>
+                      </thead>
+                      <tbody>
+                        ${filteredBatches.map(b => `
+                          <tr>
+                            <td style="text-align: center; font-weight: bold;">${b.ref}</td>
+                            <td style="text-align: center;">${new Date(b.date).toLocaleDateString('ar-EG')}</td>
+                            <td>${b.source_warehouse || '—'}</td>
+                            <td>${b.target_warehouse || '—'}</td>
+                            <td style="text-align: center;">${b.itemsCount} صنف</td>
+                            <td style="text-align: center; font-weight: bold;">${b.totalQty}</td>
+                            <td style="text-align: center; color: #2563eb; font-weight: bold;">${Number(b.totalVal).toLocaleString()} ج.م</td>
+                            <td>${b.notes || ''}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  `;
+                  printTableOrReceipt('تقرير أذونات النقل والتحويل بين المخازن', tableHtml);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>طباعة السجل</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -586,34 +623,44 @@ export const StockTransferView: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
                     من مخزن (المصدر): *
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={sourceWarehouse}
                     onChange={e => setSourceWarehouse(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                    disabled={isRestrictedWarehouse}
+                    className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 ${
+                      isRestrictedWarehouse ? 'opacity-80 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''
+                    }`}
+                    searchPlaceholder="ابحث عن مخزن المصدر..."
                   >
                     {warehouses.map(w => (
                       <option key={w.id} value={w.name}>{w.name}</option>
                     ))}
-                  </select>
+                  </SearchableSelect>
+                  {isRestrictedWarehouse && (
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-1 block">
+                      تم القفل على مخزنك المحدد
+                    </span>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
                     إلى مخزن (المستهدف): *
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={targetWarehouse}
                     onChange={e => setTargetWarehouse(e.target.value)}
                     className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                    searchPlaceholder="ابحث عن مخزن الوجهة..."
                   >
                     {warehouses.map(w => (
                       <option key={w.id} value={w.name} disabled={w.name === sourceWarehouse}>
                         {w.name} {w.name === sourceWarehouse ? '(المخزن المصدر)' : ''}
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                 </div>
 
                 <div>
@@ -671,11 +718,12 @@ export const StockTransferView: React.FC = () => {
 
                           {/* Product Select */}
                           <td className="p-3">
-                            <select
+                            <SearchableSelect
                               required
                               value={it.productId}
                               onChange={e => updateItem(it.id, 'productId', e.target.value)}
                               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:border-blue-500"
+                              searchPlaceholder="ابحث باسم المنتج أو الكود..."
                             >
                               <option value="">-- اختر المنتج من الكتالوج --</option>
                               {products.map(p => (
@@ -683,7 +731,7 @@ export const StockTransferView: React.FC = () => {
                                   {p.name} (الكود: {p.code} - الرصيد: {p.current_stock} {p.unit})
                                 </option>
                               ))}
-                            </select>
+                            </SearchableSelect>
                           </td>
 
                           {/* Available Current Stock */}
@@ -866,49 +914,51 @@ export const StockTransferView: React.FC = () => {
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const tableHtml = `
-                      <div style="font-family: 'Cairo', sans-serif; padding: 15px;">
-                        <h2 style="color: #2563eb; margin-bottom: 5px;">إذن نقل وتحويل بضائع بين المخازن</h2>
-                        <p>رقم الإذن: <strong>${activeBatch.ref}</strong></p>
-                        <p>من مخزن: <strong>${activeBatch.source_warehouse}</strong> إلى مخزن: <strong>${activeBatch.target_warehouse}</strong></p>
-                        <p>التاريخ: ${new Date(activeBatch.date).toLocaleString('ar-EG')}</p>
-                        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-                          <thead>
-                            <tr style="background-color: #2563eb; color: #fff;">
-                              <th style="padding: 6px; border: 1px solid #ccc;">#</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">اسم الصنف</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">الكمية المنقولة</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">سعر الوحدة</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">القيمة التقديرية</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            ${activeBatch.items.map((it, idx) => `
-                              <tr>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${idx + 1}</td>
-                                <td style="padding: 6px; border: 1px solid #ccc;">${it.product_name}</td>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold;">${it.quantity}</td>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${it.unit_price} ج.م</td>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold; color: #2563eb;">${it.total_price} ج.م</td>
+                {canPrint && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tableHtml = `
+                        <div style="font-family: 'Cairo', sans-serif; padding: 15px;">
+                          <h2 style="color: #2563eb; margin-bottom: 5px;">إذن نقل وتحويل بضائع بين المخازن</h2>
+                          <p>رقم الإذن: <strong>${activeBatch.ref}</strong></p>
+                          <p>من مخزن: <strong>${activeBatch.source_warehouse}</strong> إلى مخزن: <strong>${activeBatch.target_warehouse}</strong></p>
+                          <p>التاريخ: ${new Date(activeBatch.date).toLocaleString('ar-EG')}</p>
+                          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                            <thead>
+                              <tr style="background-color: #2563eb; color: #fff;">
+                                <th style="padding: 6px; border: 1px solid #ccc;">#</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">اسم الصنف</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">الكمية المنقولة</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">سعر الوحدة</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">القيمة التقديرية</th>
                               </tr>
-                            `).join('')}
-                          </tbody>
-                        </table>
-                        <div style="margin-top: 15px; font-weight: bold; text-align: left;">
-                          إجمالي قيمة المناقلة: ${Number(activeBatch.totalVal).toLocaleString()} ج.م
+                            </thead>
+                            <tbody>
+                              ${activeBatch.items.map((it, idx) => `
+                                <tr>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${idx + 1}</td>
+                                  <td style="padding: 6px; border: 1px solid #ccc;">${it.product_name}</td>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold;">${it.quantity}</td>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${it.unit_price} ج.م</td>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold; color: #2563eb;">${it.total_price} ج.م</td>
+                                </tr>
+                              `).join('')}
+                            </tbody>
+                          </table>
+                          <div style="margin-top: 15px; font-weight: bold; text-align: left;">
+                            إجمالي قيمة المناقلة: ${Number(activeBatch.totalVal).toLocaleString()} ج.م
+                          </div>
                         </div>
-                      </div>
-                    `;
-                    printTableOrReceipt(`إذن_تحويل_${activeBatch.ref}`, tableHtml);
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-md"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة إذن التحويل</span>
-                </button>
+                      `;
+                      printTableOrReceipt(`إذن_تحويل_${activeBatch.ref}`, tableHtml);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-md"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>طباعة إذن التحويل</span>
+                  </button>
+                )}
               </div>
 
               <button

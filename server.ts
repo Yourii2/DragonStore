@@ -7,6 +7,7 @@ import mysql from 'mysql2/promise';
 import fs from 'fs';
 import { loadConfigFile, saveConfigFile, getPool, resetPool, SystemConfig } from './db.js';
 import { INIT_MYSQL_TABLES_SQL } from './schema_init.js';
+import { getLicenseStatus, verifyLicenseOnline, getHardwareId } from './licenseService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,6 +133,9 @@ app.get('/api/settings/company', async (req, res) => {
     const [rows]: any = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'company_profile'");
     if (rows.length > 0) {
       const parsed = JSON.parse(rows[0].setting_value);
+      if (parsed.show_software_features === undefined) {
+        parsed.show_software_features = true;
+      }
       return res.json({ success: true, data: parsed });
     }
 
@@ -177,6 +181,476 @@ app.post('/api/settings/company', async (req, res) => {
     }
 
     res.json({ success: true, message: 'تم حفظ إعدادات الشركة بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Settings: Print Templates & Layout Customizer
+// -------------------------------------------------------------
+
+// Get Print Settings
+app.get('/api/settings/print', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    const [rows]: any = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'print_settings'");
+    if (rows.length > 0) {
+      const parsed = JSON.parse(rows[0].setting_value);
+      return res.json({ success: true, data: parsed });
+    }
+    // Return empty default to let client load defaults
+    res.json({ success: true, data: null });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Save Print Settings
+app.post('/api/settings/print', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    const settings = req.body;
+    await pool.query(
+      `INSERT INTO system_settings (setting_key, setting_value) 
+       VALUES ('print_settings', ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [JSON.stringify(settings)]
+    );
+    res.json({ success: true, message: 'تم حفظ إعدادات وقوالب الطباعة بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Network Management APIs (معاملات الشبكة: دفعات ومصروفات)
+// -------------------------------------------------------------
+
+// Ensure network_transactions table exists on first query
+async function ensureNetworkTable() {
+  const pool = getPool();
+  if (!pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS network_transactions (
+      id VARCHAR(50) PRIMARY KEY,
+      type ENUM('INCOME', 'EXPENSE') NOT NULL,
+      amount DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+      treasury_id VARCHAR(50) NOT NULL,
+      treasury_name VARCHAR(150) NOT NULL,
+      reason TEXT NOT NULL,
+      subscriber_name VARCHAR(200) NULL,
+      phone VARCHAR(50) NULL,
+      date DATE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+// 1. Get all network transactions
+app.get('/api/network/transactions', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    await ensureNetworkTable();
+    const [rows]: any = await pool.query('SELECT * FROM network_transactions ORDER BY date DESC, created_at DESC');
+    res.json({ success: true, data: rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 2. Add network transaction (INCOME or EXPENSE) & synchronize with Treasury
+app.post('/api/network/transactions', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    await ensureNetworkTable();
+    const { type, amount, treasury_id, reason, subscriber_name, phone, date } = req.body;
+    
+    const numAmount = Number(amount);
+    if (!type || isNaN(numAmount) || numAmount <= 0 || !treasury_id || !reason) {
+      return res.status(400).json({ success: false, message: 'يرجى استيفاء جميع البيانات المطلوبة بدقة' });
+    }
+
+    const conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    try {
+      // 1. Get current treasury
+      const [accRows]: any = await conn.query('SELECT name, balance FROM accounts WHERE id = ? FOR UPDATE', [treasury_id]);
+      if (accRows.length === 0) {
+        throw new Error('الخزينة المحددة غير موجودة');
+      }
+      const treasuryName = accRows[0].name;
+      const currentBalance = Number(accRows[0].balance);
+
+      if (type === 'EXPENSE' && currentBalance < numAmount) {
+        throw new Error(`رصيد الخزينة (${currentBalance.toFixed(2)} ج.م) غير كافٍ لصرف المبلغ المطلوبة`);
+      }
+
+      const newBalance = type === 'INCOME' ? currentBalance + numAmount : currentBalance - numAmount;
+      await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, treasury_id]);
+
+      // 2. Insert into network_transactions
+      const netId = `NET-${Date.now()}`;
+      const txDate = date || new Date().toISOString().slice(0, 10);
+      await conn.query(
+        `INSERT INTO network_transactions (id, type, amount, treasury_id, treasury_name, reason, subscriber_name, phone, date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [netId, type, numAmount, treasury_id, treasuryName, reason, subscriber_name || '', phone || '', txDate]
+      );
+
+      // 3. Sync to financial_transactions (حركة الخزينة العامة)
+      const ftxId = `FTX-${Date.now()}`;
+      const ftxType = type === 'INCOME' ? 'RECEIPT' : 'PAYMENT';
+      const ftxFlow = type === 'INCOME' ? 'IN' : 'OUT';
+      const ftxCategory = type === 'INCOME' ? 'إيرادات واشتراكات شبكة' : 'مصروفات وصيانة شبكة';
+      const party = subscriber_name ? `مشترك: ${subscriber_name}` : 'إدارة الشبكة';
+
+      await conn.query(
+        `INSERT INTO financial_transactions (
+          id, reference_no, date, transaction_type, account_id, account_name,
+          flow, amount, balance_after, category, party_type, party_name,
+          payment_method, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NETWORK', ?, 'CASH', ?)`,
+        [ftxId, `REF-${Date.now().toString().slice(-6)}`, txDate, ftxType, treasury_id, treasuryName, ftxFlow, numAmount, newBalance, ftxCategory, party, reason]
+      );
+
+      // If EXPENSE, also log in general expenses table for accounting transparency
+      if (type === 'EXPENSE') {
+        const expId = `EXP-${Date.now()}`;
+        await conn.query(
+          `INSERT INTO expenses (id, title, category, date, amount, type, allocation_ratio, shop_portion, freelance_portion, payment_account)
+           VALUES (?, ?, 'مصروفات شبكة وإنترنت', ?, ?, 'SHARED_DEFAULT', '100_0', ?, 0.00, ?)`,
+          [expId, reason, txDate, numAmount, numAmount, treasuryName]
+        );
+      }
+
+      await conn.commit();
+      conn.release();
+
+      res.json({
+        success: true,
+        message: type === 'INCOME' ? 'تم استلام وتوريد الدفعة إلى الخزينة بنجاح' : 'تم تسجيل وصرف المصروف من الخزينة بنجاح',
+        data: { id: netId, newBalance }
+      });
+    } catch (err) {
+      await conn.rollback();
+      conn.release();
+      throw err;
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Specialized Segmented Reports API
+// -------------------------------------------------------------
+
+// 1. Network P&L Report (تقرير أرباح وخسائر الشبكة حسب المدة)
+app.get('/api/reports/network-pnl', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    await ensureNetworkTable();
+    const { startDate, endDate } = req.query;
+    let query = 'SELECT * FROM network_transactions';
+    const params: any[] = [];
+    if (startDate && endDate) {
+      query += ' WHERE date BETWEEN ? AND ?';
+      params.push(startDate, endDate);
+    }
+    query += ' ORDER BY date DESC, created_at DESC';
+
+    const [rows]: any = await pool.query(query, params);
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    for (const r of rows) {
+      const amt = Number(r.amount) || 0;
+      if (r.type === 'INCOME') totalIncome += amt;
+      else totalExpense += amt;
+    }
+    const netProfit = totalIncome - totalExpense;
+
+    res.json({
+      success: true,
+      data: {
+        totalIncome,
+        totalExpense,
+        netProfit,
+        profitMargin: totalIncome > 0 ? ((netProfit / totalIncome) * 100).toFixed(1) : '0',
+        transactions: rows
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 2. Physical Goods Profit & Sales Report (تقرير مبيعات وأرباح السلع المادية)
+app.get('/api/reports/physical-goods', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    const { startDate, endDate } = req.query;
+    let query = "SELECT * FROM sales_invoices WHERE status = 'COMPLETED'";
+    const params: any[] = [];
+    if (startDate && endDate) {
+      query += ' AND date BETWEEN ? AND ?';
+      params.push(startDate, endDate);
+    }
+    query += ' ORDER BY date DESC';
+
+    const [invoices]: any = await pool.query(query, params);
+
+    // Get physical products map
+    const [products]: any = await pool.query("SELECT id, name, category, product_type, buy_price, sell_price FROM products WHERE product_type = 'PHYSICAL'");
+    const physicalIds = new Set(products.map((p: any) => p.id));
+    const productMap = new Map<string, any>(products.map((p: any) => [p.id, p]));
+
+    let totalSales = 0;
+    let totalCogs = 0;
+    const itemsSummary: { [key: string]: { name: string; category: string; quantity: number; salesTotal: number; cogsTotal: number; profit: number } } = {};
+
+    for (const inv of invoices) {
+      let invItems: any[] = [];
+      try {
+        invItems = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+      } catch (e) {
+        invItems = [];
+      }
+
+      for (const itm of invItems) {
+        const prodId = itm.productId || itm.id;
+        // Check if item is physical or not explicitly digital/service
+        const prod = productMap.get(prodId);
+        const isPhysical = physicalIds.has(prodId) || (!itm.type || itm.type === 'PHYSICAL');
+
+        if (isPhysical) {
+          const qty = Number(itm.quantity || itm.qty || 1);
+          const price = Number(itm.unitPrice || itm.price || 0);
+          const buyPrice = Number(prod ? prod.buy_price : (itm.buyPrice || itm.costPrice || 0));
+          const lineTotal = Number(itm.total || (qty * price));
+          const lineCogs = qty * buyPrice;
+          const lineProfit = lineTotal - lineCogs;
+
+          totalSales += lineTotal;
+          totalCogs += lineCogs;
+
+          const key = prodId || itm.name;
+          if (!itemsSummary[key]) {
+            itemsSummary[key] = {
+              name: itm.name || (prod ? prod.name : 'منتج غير معروف'),
+              category: prod ? prod.category : 'عام',
+              quantity: 0,
+              salesTotal: 0,
+              cogsTotal: 0,
+              profit: 0
+            };
+          }
+          itemsSummary[key].quantity += qty;
+          itemsSummary[key].salesTotal += lineTotal;
+          itemsSummary[key].cogsTotal += lineCogs;
+          itemsSummary[key].profit += lineProfit;
+        }
+      }
+    }
+
+    const netProfit = totalSales - totalCogs;
+    res.json({
+      success: true,
+      data: {
+        totalSales,
+        totalCogs,
+        netProfit,
+        margin: totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : '0',
+        items: Object.values(itemsSummary).sort((a, b) => b.profit - a.profit)
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Maintenance Profit Report (تقرير أرباح الصيانة والأجهزة)
+app.get('/api/reports/maintenance-profit', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    const { startDate, endDate } = req.query;
+    let query = "SELECT * FROM maintenance_orders";
+    const params: any[] = [];
+    if (startDate && endDate) {
+      query += ' WHERE received_date BETWEEN ? AND ?';
+      params.push(startDate, endDate);
+    }
+    query += ' ORDER BY received_date DESC';
+
+    const [orders]: any = await pool.query(query, params);
+
+    let totalRevenue = 0;
+    let totalPartsCost = 0;
+    let totalLabor = 0;
+
+    const ordersDetails = orders.map((ord: any) => {
+      const total = Number(ord.total_amount) || 0;
+      const labor = Number(ord.labor_cost) || 0;
+      let partsCost = 0;
+
+      try {
+        const parts = typeof ord.parts_used === 'string' ? JSON.parse(ord.parts_used) : (ord.parts_used || []);
+        if (Array.isArray(parts)) {
+          partsCost = parts.reduce((acc: number, p: any) => acc + (Number(p.cost || p.buy_price || 0) * Number(p.quantity || 1)), 0);
+        }
+      } catch (e) {
+        partsCost = 0;
+      }
+
+      const profit = total - partsCost;
+      totalRevenue += total;
+      totalPartsCost += partsCost;
+      totalLabor += labor;
+
+      return {
+        id: ord.id,
+        order_number: ord.order_number,
+        customer_name: ord.customer_name,
+        device_type: ord.device_type,
+        brand_model: ord.brand_model,
+        status: ord.status,
+        date: ord.received_date,
+        totalAmount: total,
+        partsCost,
+        laborCost: labor,
+        netProfit: profit
+      };
+    });
+
+    const netProfit = totalRevenue - totalPartsCost;
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue,
+        totalPartsCost,
+        totalLabor,
+        netProfit,
+        margin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0',
+        orders: ordersDetails
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 4. Software & Digital Sales Report (تقرير مبيعات وأرباح البرمجيات والحلول الرقمية)
+app.get('/api/reports/software-sales', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'قاعدة البيانات غير متصلة' });
+  try {
+    const { startDate, endDate } = req.query;
+
+    // A. Digital products from sales invoices
+    let invQuery = "SELECT * FROM sales_invoices WHERE status = 'COMPLETED'";
+    const invParams: any[] = [];
+    if (startDate && endDate) {
+      invQuery += ' AND date BETWEEN ? AND ?';
+      invParams.push(startDate, endDate);
+    }
+    const [invoices]: any = await pool.query(invQuery, invParams);
+
+    // Get digital/software products
+    const [digitalProducts]: any = await pool.query("SELECT id, name, category, product_type, buy_price, sell_price FROM products WHERE product_type = 'DIGITAL'");
+    const digitalIds = new Set(digitalProducts.map((p: any) => p.id));
+    const digitalMap = new Map<string, any>(digitalProducts.map((p: any) => [p.id, p]));
+
+    let softwareProductSales = 0;
+    let softwareProductCost = 0;
+    const softwareItems: any[] = [];
+
+    for (const inv of invoices) {
+      let items: any[] = [];
+      try {
+        items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+      } catch (e) {
+        items = [];
+      }
+
+      for (const itm of items) {
+        const prodId = itm.productId || itm.id;
+        const prod = digitalMap.get(prodId);
+        if (digitalIds.has(prodId) || itm.type === 'DIGITAL' || itm.category?.includes('برمج') || itm.name?.includes('برنامج') || itm.name?.includes('سيرفر')) {
+          const qty = Number(itm.quantity || itm.qty || 1);
+          const price = Number(itm.unitPrice || itm.price || 0);
+          const cost = Number(prod ? prod.buy_price : (itm.buyPrice || 0));
+          const lineTotal = Number(itm.total || (qty * price));
+          const lineCost = qty * cost;
+          const lineProfit = lineTotal - lineCost;
+
+          softwareProductSales += lineTotal;
+          softwareProductCost += lineCost;
+
+          softwareItems.push({
+            date: inv.date,
+            invoiceNumber: inv.invoice_number,
+            customerName: inv.customer_name,
+            productName: itm.name,
+            quantity: qty,
+            revenue: lineTotal,
+            cost: lineCost,
+            profit: lineProfit
+          });
+        }
+      }
+    }
+
+    // B. Freelance Projects (مشاريع تطوير البرمجيات السحابية)
+    let projectQuery = "SELECT * FROM freelance_projects";
+    const projParams: any[] = [];
+    if (startDate && endDate) {
+      projectQuery += ' WHERE start_date BETWEEN ? AND ?';
+      projParams.push(startDate, endDate);
+    }
+    const [projects]: any = await pool.query(projectQuery, projParams);
+
+    let projectsTotalRevenue = 0;
+    const projectDetails = projects.map((proj: any) => {
+      const amount = Number(proj.contract_amount) || 0;
+      projectsTotalRevenue += amount;
+      return {
+        id: proj.id,
+        title: proj.title,
+        clientName: proj.client_name,
+        country: proj.client_country,
+        amount,
+        currency: proj.currency,
+        status: proj.status,
+        date: proj.start_date
+      };
+    });
+
+    const totalSoftwareRevenue = softwareProductSales + projectsTotalRevenue;
+    const totalSoftwareProfit = totalSoftwareRevenue - softwareProductCost;
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue: totalSoftwareRevenue,
+        productSales: softwareProductSales,
+        projectsRevenue: projectsTotalRevenue,
+        cost: softwareProductCost,
+        netProfit: totalSoftwareProfit,
+        margin: totalSoftwareRevenue > 0 ? ((totalSoftwareProfit / totalSoftwareRevenue) * 100).toFixed(1) : '100',
+        items: softwareItems,
+        projects: projectDetails
+      }
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -637,8 +1111,8 @@ app.post('/api/system/zero-counters', async (req, res) => {
 
       // 9. Log this action in audit_logs
       await conn.query(
-        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
-         VALUES (?, ?, 'المدير العام', 'تصفير العدادات', 'إعدادات النظام', 'all', ?)`,
+        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+         VALUES (?, ?, 'المدير العام', 'تصفير العدادات', 'إعدادات النظام', 'all', 'system', ?)`,
         [`log-${Date.now()}`, new Date().toISOString(), 'تم تصفير جميع المعاملات والمبيعات وكميات المخزون والأرصدة مع الاحتفاظ بالبيانات الأساسية وأخذ نسخة احتياطية تلقائية']
       );
 
@@ -685,6 +1159,39 @@ app.post('/api/system/reset', async (req, res) => {
 });
 
 // -------------------------------------------------------------
+// API: License & Activation (نظام التراخيص والتفعيل وحماية النظام)
+// -------------------------------------------------------------
+
+// 1. Get current license status & Hardware ID
+app.get('/api/license/status', (req, res) => {
+  try {
+    const status = getLicenseStatus();
+    res.json({ success: true, data: status });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'فشل استعلام حالة الترخيص: ' + err.message });
+  }
+});
+
+// 2. Activate or renew license online via Google Script
+app.post('/api/license/activate', async (req, res) => {
+  try {
+    const { company, phone } = req.body || {};
+    const license = await verifyLicenseOnline({ company, phone });
+    res.json({
+      success: true,
+      message: license.status === 'active' ? 'تم التحقق من الترخيص وتفعيله بنجاح من السيرفر السحابي!' : 'تم فحص الترخيص',
+      data: license
+    });
+  } catch (err: any) {
+    console.error('Online activation failed:', err.message);
+    res.status(500).json({
+      success: false,
+      message: 'فشل الاتصال بخادم التفعيل السحابي (Google Sheets): ' + (err.message || 'خطأ غير معروف')
+    });
+  }
+});
+
+// -------------------------------------------------------------
 // API: Authentication from MySQL
 // -------------------------------------------------------------
 
@@ -710,15 +1217,34 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'كلمة المرور غير صحيحة' });
     }
 
+    let userPerms = {};
+    try {
+      if (user.permissions) {
+        userPerms = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+      }
+    } catch (e) {}
+
+    let userFinPerms = {};
+    try {
+      if (user.financial_permissions) {
+        userFinPerms = typeof user.financial_permissions === 'string' ? JSON.parse(user.financial_permissions) : user.financial_permissions;
+      }
+    } catch (e) {}
+
     const safeUser = {
       id: `usr_${user.id}`,
+      db_id: user.id,
       name: user.full_name,
       username: user.username,
       email: user.email,
       role: user.role,
       roleTitleAr: user.role_title_ar || 'مسؤول النظام',
       avatarColor: user.role === 'SUPER_ADMIN' ? 'bg-cyan-600' : 'bg-emerald-600',
-      accessibleUnits: [user.accessible_units || 'BOTH']
+      accessibleUnits: [user.accessible_units || 'BOTH'],
+      permissions: userPerms,
+      assignedWarehouse: user.assigned_warehouse || 'ALL',
+      assignedTreasury: user.assigned_treasury || 'ALL',
+      financialPermissions: userFinPerms
     };
 
     res.json({ success: true, user: safeUser });
@@ -736,9 +1262,26 @@ app.get('/api/users', async (req, res) => {
   if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
   try {
     const [rows]: any = await pool.query(
-      'SELECT id, username, email, full_name, role, role_title_ar, is_active, created_at FROM users ORDER BY id ASC'
+      'SELECT id, username, email, full_name, role, role_title_ar, accessible_units, permissions, assigned_warehouse, assigned_treasury, financial_permissions, is_active, created_at FROM users ORDER BY id ASC'
     );
-    res.json({ success: true, data: rows });
+    const parsedRows = rows.map((u: any) => {
+      let perms = {};
+      try {
+        if (u.permissions) perms = typeof u.permissions === 'string' ? JSON.parse(u.permissions) : u.permissions;
+      } catch (e) {}
+      let finPerms = {};
+      try {
+        if (u.financial_permissions) finPerms = typeof u.financial_permissions === 'string' ? JSON.parse(u.financial_permissions) : u.financial_permissions;
+      } catch (e) {}
+      return {
+        ...u,
+        permissions: perms,
+        assigned_warehouse: u.assigned_warehouse || 'ALL',
+        assigned_treasury: u.assigned_treasury || 'ALL',
+        financial_permissions: finPerms
+      };
+    });
+    res.json({ success: true, data: parsedRows });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -781,9 +1324,9 @@ app.post('/api/users', async (req, res) => {
 
       // Log action
       await pool.query(
-        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
-         VALUES (?, ?, 'المدير العام', 'تعديل مستخدم', 'إدارة المستخدمين', 'users', ?)`,
-        [`log-${Date.now()}`, new Date().toISOString(), `تعديل بيانات المستخدم: ${full_name} (${cleanUsername})`]
+        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+         VALUES (?, ?, 'المدير العام', 'تعديل مستخدم', 'إدارة المستخدمين', 'users', ?, ?)`,
+        [`log-${Date.now()}`, new Date().toISOString(), String(id), `تعديل بيانات المستخدم: ${full_name} (${cleanUsername})`]
       );
 
       return res.json({ success: true, message: 'تم تحديث بيانات المستخدم بنجاح' });
@@ -807,9 +1350,9 @@ app.post('/api/users', async (req, res) => {
 
       // Log action
       await pool.query(
-        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
-         VALUES (?, ?, 'المدير العام', 'إضافة مستخدم', 'إدارة المستخدمين', 'users', ?)`,
-        [`log-${Date.now()}`, new Date().toISOString(), `إضافة مستخدم جديد: ${full_name} نوع: ${roleTitle}`]
+        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+         VALUES (?, ?, 'المدير العام', 'إضافة مستخدم', 'إدارة المستخدمين', 'users', ?, ?)`,
+        [`log-${Date.now()}`, new Date().toISOString(), String(insertRes.insertId), `إضافة مستخدم جديد: ${full_name} نوع: ${roleTitle}`]
       );
 
       return res.json({ success: true, id: insertRes.insertId, message: 'تم إنشاء المستخدم بنجاح' });
@@ -837,13 +1380,49 @@ app.delete('/api/users/:id', async (req, res) => {
     // Log action
     if (uRows.length > 0) {
       await pool.query(
-        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
-         VALUES (?, ?, 'المدير العام', 'حذف مستخدم', 'إدارة المستخدمين', 'users', ?)`,
-        [`log-${Date.now()}`, new Date().toISOString(), `حذف المستخدم: ${uRows[0].full_name}`]
+        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+         VALUES (?, ?, 'المدير العام', 'حذف مستخدم', 'إدارة المستخدمين', 'users', ?, ?)`,
+        [`log-${Date.now()}`, new Date().toISOString(), String(userId), `حذف المستخدم: ${uRows[0].full_name}`]
       );
     }
 
     res.json({ success: true, message: 'تم حذف المستخدم بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Update User Permissions, Assigned Warehouse, Assigned Treasury & Financial Operations
+app.post('/api/users/:id/permissions', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const userId = req.params.id;
+    const { permissions, assigned_warehouse, assigned_treasury, financial_permissions } = req.body;
+
+    const permsStr = permissions ? JSON.stringify(permissions) : null;
+    const finPermsStr = financial_permissions ? JSON.stringify(financial_permissions) : null;
+    const warehouseVal = assigned_warehouse || 'ALL';
+    const treasuryVal = assigned_treasury || 'ALL';
+
+    await pool.query(
+      `UPDATE users 
+       SET permissions = ?, assigned_warehouse = ?, assigned_treasury = ?, financial_permissions = ? 
+       WHERE id = ?`,
+      [permsStr, warehouseVal, treasuryVal, finPermsStr, userId]
+    );
+
+    // Get user details for audit log
+    const [uRows]: any = await pool.query('SELECT full_name, username FROM users WHERE id = ?', [userId]);
+    const userName = uRows.length > 0 ? uRows[0].full_name : `مستخدم #${userId}`;
+
+    await pool.query(
+      `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+       VALUES (?, ?, 'المدير العام', 'تعديل صلاحيات', 'صلاحيات المستخدمين', 'users', ?, ?)`,
+      [`log-${Date.now()}`, new Date().toISOString(), String(userId), `تحديث مصفوفة الصلاحيات وتخصيص الخزينة (${treasuryVal}) والمخزن (${warehouseVal}) للمستخدم: ${userName}`]
+    );
+
+    res.json({ success: true, message: 'تم حفظ الصلاحيات والتخصيصات بنجاح' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -879,9 +1458,9 @@ app.post('/api/users/change-password', async (req, res) => {
 
     // Audit log
     await pool.query(
-      `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
-       VALUES (?, ?, ?, 'تغيير كلمة المرور', 'الملف الشخصي', 'users', ?)`,
-      [`log-${Date.now()}`, new Date().toISOString(), user.full_name, `قام المستخدم ${user.username} بتغيير كلمة المرور الخاصة به بنجاح`]
+      `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+       VALUES (?, ?, ?, 'تغيير كلمة المرور', 'الملف الشخصي', 'users', ?, ?)`,
+      [`log-${Date.now()}`, new Date().toISOString(), user.full_name, String(user.id), `قام المستخدم ${user.username} بتغيير كلمة المرور الخاصة به بنجاح`]
     );
 
     res.json({ 
@@ -2584,9 +3163,9 @@ app.post('/api/sales', async (req, res) => {
 
       // 5. Audit Log
       await conn.query(
-        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, details)
-         VALUES (?, NOW(), 'المدير العام', 'فاتورة مبيعات', 'المبيعات والكاشير', 'sales_invoices', ?)`,
-        [`log-${Date.now()}`, `إصدار فاتورة مبيعات رقم ${invNumber} بقيمة ${net_total} ج.م للعميل ${customer_name}`]
+        `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+         VALUES (?, NOW(), 'المدير العام', 'فاتورة مبيعات', 'المبيعات والكاشير', 'sales_invoices', ?, ?)`,
+        [`log-${Date.now()}`, String(invNumber), `إصدار فاتورة مبيعات رقم ${invNumber} بقيمة ${net_total} ج.م للعميل ${customer_name}`]
       );
     }
 
@@ -2599,6 +3178,139 @@ app.post('/api/sales', async (req, res) => {
       invoice_number: invNumber,
       message: isQuotation ? 'تم حفظ عرض السعر بنجاح' : 'تم إصدار وحفظ فاتورة المبيعات بنجاح'
     });
+  } catch (err: any) {
+    await conn.rollback();
+    conn.release();
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Return Sales Invoice
+app.post('/api/sales/:id/return', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+
+  const { id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [rows]: any = await conn.query('SELECT * FROM sales_invoices WHERE id = ? OR invoice_number = ?', [id, id]);
+    if (!rows || rows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, message: 'الفاتورة غير موجودة' });
+    }
+
+    const inv = rows[0];
+    if (inv.status === 'RETURNED') {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({ success: false, message: 'هذه الفاتورة تم إرجاعها مسبقاً' });
+    }
+
+    const items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+
+    // 1. Restore product stock and record stock movement
+    for (const item of items) {
+      const prodId = item.product_id || item.id;
+      const qty = Number(item.quantity || 1);
+      const unitPrice = Number(item.unit_price || 0);
+
+      await conn.query(
+        'UPDATE products SET current_stock = current_stock + ? WHERE id = ? OR code = ?',
+        [qty, prodId, prodId]
+      );
+
+      const movId = `mov-ret-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await conn.query(
+        `INSERT INTO stock_movements (
+          id, reference_no, movement_type, product_id, product_name,
+          quantity, unit_price, total_price, source_warehouse, target_warehouse, notes, created_by
+        ) VALUES (?, ?, 'IN', ?, ?, ?, ?, ?, NULL, ?, ?, 'المدير العام')`,
+        [
+          movId,
+          inv.invoice_number,
+          prodId,
+          item.name || item.product_name || 'مرتجع صنف',
+          qty,
+          unitPrice,
+          qty * unitPrice,
+          inv.warehouse || 'مخزن المتجر الرئيسي',
+          `مرتجع مبيعات فاتورة رقم ${inv.invoice_number}`
+        ]
+      );
+    }
+
+    // 2. Refund treasury/bank if paid amount > 0
+    const paidAmt = Number(inv.paid_amount || 0);
+    if (paidAmt > 0 && inv.account_id) {
+      const [accRows]: any = await conn.query('SELECT balance, name FROM accounts WHERE id = ?', [inv.account_id]);
+      if (accRows.length > 0) {
+        const newBal = Number(accRows[0].balance || 0) - paidAmt;
+        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBal, inv.account_id]);
+
+        const ftxId = `ftx-ret-${Date.now()}`;
+        await conn.query(
+          `INSERT INTO financial_transactions (
+            id, reference_no, date, type, account_id, account_name,
+            amount, balance_after, party_type, party_name, description, created_by
+          ) VALUES (?, ?, CURDATE(), 'EXPENSE', ?, ?, ?, ?, 'CUSTOMER', ?, ?, 'مرتجع مبيعات')`,
+          [
+            ftxId,
+            inv.invoice_number,
+            inv.account_id,
+            accRows[0].name,
+            paidAmt,
+            newBal,
+            inv.customer_name || 'عميل نقدي',
+            `رد قيمة مرتجع مبيعات فاتورة رقم ${inv.invoice_number}`
+          ]
+        );
+      }
+    }
+
+    // 3. Deduct debt from customer if remaining amount > 0
+    const remAmt = Number(inv.remaining_amount || 0);
+    if (remAmt > 0 && inv.customer_id && inv.customer_id !== 'WALK_IN') {
+      const [custRows]: any = await conn.query('SELECT balance, name FROM customers WHERE id = ?', [inv.customer_id]);
+      if (custRows.length > 0) {
+        const newCustBal = Math.max(0, Number(custRows[0].balance || 0) - remAmt);
+        await conn.query('UPDATE customers SET balance = ? WHERE id = ?', [newCustBal, inv.customer_id]);
+
+        const ctxId = `ctx-ret-${Date.now()}`;
+        await conn.query(
+          `INSERT INTO customer_transactions (
+            id, customer_id, customer_name, transaction_type, reference_no,
+            date, debit, credit, balance_after, payment_method, notes
+          ) VALUES (?, ?, ?, 'RETURN', ?, CURDATE(), 0, ?, ?, 'مرتجع', ?)`,
+          [
+            ctxId,
+            inv.customer_id,
+            custRows[0].name,
+            inv.invoice_number,
+            remAmt,
+            newCustBal,
+            `تسوية مرتجع مبيعات فاتورة رقم ${inv.invoice_number}`
+          ]
+        );
+      }
+    }
+
+    // 4. Update status of invoice to RETURNED
+    await conn.query('UPDATE sales_invoices SET status = "RETURNED" WHERE id = ?', [inv.id]);
+
+    // 5. Audit Log
+    await conn.query(
+      `INSERT INTO audit_logs (id, timestamp, user, action, module, table_name, record_id, details)
+       VALUES (?, NOW(), 'المدير العام', 'مرتجع مبيعات', 'المبيعات والكاشير', 'sales_invoices', ?, ?)`,
+      [`log-ret-${Date.now()}`, String(inv.invoice_number), `عمل مرتجع كامل لفاتورة مبيعات رقم ${inv.invoice_number} بقيمة ${inv.net_total} ج.م`]
+    );
+
+    await conn.commit();
+    conn.release();
+
+    res.json({ success: true, message: `تم عمل مرتجع للفاتورة رقم (${inv.invoice_number}) بنجاح وإعادة البضاعة للمخزن` });
   } catch (err: any) {
     await conn.rollback();
     conn.release();
@@ -3056,6 +3768,261 @@ app.get('/api/reports', async (req, res) => {
           grossProfit: Number(s.freelance_sales || 0) - Number(s.freelance_cogs || 0),
           expenses: Number(e.freelance_expenses || 0)
         }
+      };
+    } else if (type === 'physical') {
+      // 8. Physical Goods Sales & Profit Report
+      let invQuery = "SELECT * FROM sales_invoices WHERE status = 'COMPLETED'";
+      const invParams: any[] = [];
+      if (startDate) { invQuery += ' AND date >= ?'; invParams.push(startDate); }
+      if (endDate) { invQuery += ' AND date <= ?'; invParams.push(endDate); }
+      invQuery += ' ORDER BY date DESC';
+      const [invoices]: any = await pool.query(invQuery, invParams);
+
+      const [products]: any = await pool.query("SELECT id, name, category, product_type, buy_price, sell_price FROM products WHERE product_type = 'PHYSICAL'");
+      const physicalIds = new Set(products.map((p: any) => p.id));
+      const productMap = new Map<string, any>(products.map((p: any) => [p.id, p]));
+
+      let totalSales = 0;
+      let totalCogs = 0;
+      const itemsSummary: { [key: string]: { name: string; category: string; quantity: number; salesTotal: number; cogsTotal: number; profit: number } } = {};
+
+      for (const inv of invoices) {
+        let invItems: any[] = [];
+        try { invItems = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []); } catch (e) { invItems = []; }
+
+        for (const itm of invItems) {
+          const prodId = itm.productId || itm.id;
+          const prod = productMap.get(prodId);
+          const isPhysical = physicalIds.has(prodId) || (!itm.type || itm.type === 'PHYSICAL');
+
+          if (isPhysical) {
+            const qty = Number(itm.quantity || itm.qty || 1);
+            const price = Number(itm.unitPrice || itm.price || 0);
+            const buyPrice = Number(prod ? prod.buy_price : (itm.buyPrice || itm.costPrice || 0));
+            const lineTotal = Number(itm.total || (qty * price));
+            const lineCogs = qty * buyPrice;
+            const lineProfit = lineTotal - lineCogs;
+
+            totalSales += lineTotal;
+            totalCogs += lineCogs;
+
+            const key = prodId || itm.name;
+            if (!itemsSummary[key]) {
+              itemsSummary[key] = {
+                name: itm.name || (prod ? prod.name : 'منتج غير معروف'),
+                category: prod ? prod.category : 'عام',
+                quantity: 0,
+                salesTotal: 0,
+                cogsTotal: 0,
+                profit: 0
+              };
+            }
+            itemsSummary[key].quantity += qty;
+            itemsSummary[key].salesTotal += lineTotal;
+            itemsSummary[key].cogsTotal += lineCogs;
+            itemsSummary[key].profit += lineProfit;
+          }
+        }
+      }
+
+      const netProfit = totalSales - totalCogs;
+      const rows = Object.values(itemsSummary).sort((a, b) => b.profit - a.profit);
+      resultData = {
+        summary: {
+          totalSales,
+          totalCogs,
+          netProfit,
+          margin: totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : '0',
+          totalItemsCount: rows.length
+        },
+        rows
+      };
+    } else if (type === 'maintenance') {
+      // 9. Maintenance Profit Report
+      let query = "SELECT * FROM maintenance_orders WHERE 1=1";
+      const params: any[] = [];
+      if (startDate) { query += ' AND received_date >= ?'; params.push(startDate); }
+      if (endDate) { query += ' AND received_date <= ?'; params.push(endDate); }
+      query += ' ORDER BY received_date DESC';
+
+      const [orders]: any = await pool.query(query, params);
+
+      let totalRevenue = 0;
+      let totalPartsCost = 0;
+      let totalLabor = 0;
+
+      const rows = orders.map((ord: any) => {
+        const total = Number(ord.total_amount) || 0;
+        const labor = Number(ord.labor_cost) || 0;
+        let partsCost = 0;
+
+        try {
+          const parts = typeof ord.parts_used === 'string' ? JSON.parse(ord.parts_used) : (ord.parts_used || []);
+          if (Array.isArray(parts)) {
+            partsCost = parts.reduce((acc: number, p: any) => acc + (Number(p.cost || p.buy_price || 0) * Number(p.quantity || 1)), 0);
+          }
+        } catch (e) { partsCost = 0; }
+
+        const profit = total - partsCost;
+        totalRevenue += total;
+        totalPartsCost += partsCost;
+        totalLabor += labor;
+
+        return {
+          id: ord.id,
+          order_number: ord.order_number,
+          customer_name: ord.customer_name,
+          device_type: ord.device_type,
+          brand_model: ord.brand_model,
+          status: ord.status,
+          date: ord.received_date,
+          totalAmount: total,
+          partsCost,
+          laborCost: labor,
+          netProfit: profit
+        };
+      });
+
+      const netProfit = totalRevenue - totalPartsCost;
+      resultData = {
+        summary: {
+          totalRevenue,
+          totalPartsCost,
+          totalLabor,
+          netProfit,
+          margin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0',
+          ordersCount: orders.length
+        },
+        rows
+      };
+    } else if (type === 'software') {
+      // 10. Software Sales & Development Report
+      let invQuery = "SELECT * FROM sales_invoices WHERE status = 'COMPLETED'";
+      const invParams: any[] = [];
+      if (startDate) { invQuery += ' AND date >= ?'; invParams.push(startDate); }
+      if (endDate) { invQuery += ' AND date <= ?'; invParams.push(endDate); }
+      const [invoices]: any = await pool.query(invQuery, invParams);
+
+      const [digitalProducts]: any = await pool.query("SELECT id, name, category, product_type, buy_price, sell_price FROM products WHERE product_type = 'DIGITAL'");
+      const digitalIds = new Set(digitalProducts.map((p: any) => p.id));
+      const digitalMap = new Map<string, any>(digitalProducts.map((p: any) => [p.id, p]));
+
+      let softwareProductSales = 0;
+      let softwareProductCost = 0;
+      const rows: any[] = [];
+
+      for (const inv of invoices) {
+        let items: any[] = [];
+        try { items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []); } catch (e) { items = []; }
+
+        for (const itm of items) {
+          const prodId = itm.productId || itm.id;
+          const prod = digitalMap.get(prodId);
+          if (digitalIds.has(prodId) || itm.type === 'DIGITAL' || itm.category?.includes('برمج') || itm.name?.includes('برنامج') || itm.name?.includes('سيرفر')) {
+            const qty = Number(itm.quantity || itm.qty || 1);
+            const price = Number(itm.unitPrice || itm.price || 0);
+            const cost = Number(prod ? prod.buy_price : (itm.buyPrice || 0));
+            const lineTotal = Number(itm.total || (qty * price));
+            const lineCost = qty * cost;
+            const lineProfit = lineTotal - lineCost;
+
+            softwareProductSales += lineTotal;
+            softwareProductCost += lineCost;
+
+            rows.push({
+              id: `${inv.id}-${rows.length}`,
+              date: inv.date,
+              reference: inv.invoice_number,
+              customer_name: inv.customer_name,
+              item_name: itm.name,
+              quantity: qty,
+              revenue: lineTotal,
+              cost: lineCost,
+              profit: lineProfit
+            });
+          }
+        }
+      }
+
+      let projQuery = "SELECT * FROM freelance_projects WHERE 1=1";
+      const projParams: any[] = [];
+      if (startDate) { projQuery += ' AND start_date >= ?'; projParams.push(startDate); }
+      if (endDate) { projQuery += ' AND start_date <= ?'; projParams.push(endDate); }
+      const [projects]: any = await pool.query(projQuery, projParams);
+
+      let projectsTotalRevenue = 0;
+      for (const p of projects) {
+        const amt = Number(p.contract_amount) || 0;
+        projectsTotalRevenue += amt;
+        rows.push({
+          id: p.id,
+          date: p.start_date,
+          reference: `PROJ-${p.id}`,
+          customer_name: `${p.client_name} (${p.client_country})`,
+          item_name: `مشروع برمجي: ${p.title}`,
+          quantity: 1,
+          revenue: amt,
+          cost: 0,
+          profit: amt
+        });
+      }
+
+      const totalRevenue = softwareProductSales + projectsTotalRevenue;
+      const netProfit = totalRevenue - softwareProductCost;
+
+      resultData = {
+        summary: {
+          totalRevenue,
+          productSales: softwareProductSales,
+          projectsRevenue: projectsTotalRevenue,
+          cost: softwareProductCost,
+          netProfit,
+          margin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '100',
+          count: rows.length
+        },
+        rows: rows.sort((a, b) => b.profit - a.profit)
+      };
+    } else if (type === 'network') {
+      // 11. Network P&L Report
+      await ensureNetworkTable();
+      let query = "SELECT * FROM network_transactions WHERE 1=1";
+      const params: any[] = [];
+      if (startDate) { query += ' AND date >= ?'; params.push(startDate); }
+      if (endDate) { query += ' AND date <= ?'; params.push(endDate); }
+      query += ' ORDER BY date DESC, created_at DESC';
+
+      const [transactions]: any = await pool.query(query, params);
+
+      let totalIncome = 0;
+      let totalExpense = 0;
+      for (const t of transactions) {
+        const amt = Number(t.amount) || 0;
+        if (t.type === 'INCOME') totalIncome += amt;
+        else totalExpense += amt;
+      }
+      const netProfit = totalIncome - totalExpense;
+
+      const rows = transactions.map((t: any) => ({
+        id: t.id,
+        date: t.date,
+        type: t.type === 'INCOME' ? 'استلام دفعة / اشتراك' : 'مصروف شبكة',
+        subscriber_name: t.subscriber_name || '—',
+        phone: t.phone || '—',
+        reason: t.reason,
+        treasury_name: t.treasury_name,
+        amount: Number(t.amount) || 0,
+        net_effect: t.type === 'INCOME' ? Number(t.amount) : -Number(t.amount)
+      }));
+
+      resultData = {
+        summary: {
+          totalIncome,
+          totalExpense,
+          netProfit,
+          margin: totalIncome > 0 ? ((netProfit / totalIncome) * 100).toFixed(1) : '0',
+          count: rows.length
+        },
+        rows
       };
     }
 

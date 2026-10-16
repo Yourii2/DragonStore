@@ -14,9 +14,11 @@ import {
   X,
   Sparkles,
   Wifi,
-  Network
+  Network,
+  Code
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
+import SearchableSelect from './SearchableSelect';
 
 const FOOTER_EXAMPLES = [
   'شكراً لتعاملكم معنا - نسعد دائماً بخدمتكم ورضاكم غايتنا.',
@@ -37,7 +39,8 @@ export const CompanySettingsView: React.FC = () => {
     commercial_record: '',
     vat_rate: 14,
     currency: 'EGP',
-    show_network_page: false
+    show_network_page: false,
+    show_software_features: true
   });
 
   const [loading, setLoading] = useState(false);
@@ -61,7 +64,8 @@ export const CompanySettingsView: React.FC = () => {
           commercial_record: data.data.commercial_record || '',
           vat_rate: Number(data.data.vat_rate !== undefined ? data.data.vat_rate : 14),
           currency: data.data.currency || 'EGP',
-          show_network_page: Boolean(data.data.show_network_page)
+          show_network_page: Boolean(data.data.show_network_page),
+          show_software_features: data.data.show_software_features !== undefined ? Boolean(data.data.show_software_features) : true
         });
       }
     } catch (err) {
@@ -106,6 +110,12 @@ export const CompanySettingsView: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         setSuccessMessage(true);
+        window.dispatchEvent(new CustomEvent('company-settings-updated', {
+          detail: { 
+            show_network_page: formData.show_network_page,
+            show_software_features: formData.show_software_features
+          }
+        }));
         setTimeout(() => setSuccessMessage(false), 3000);
       } else {
         alert(data.message || 'فشل حفظ الإعدادات');
@@ -325,7 +335,7 @@ export const CompanySettingsView: React.FC = () => {
                 <DollarSign className="w-3.5 h-3.5 text-slate-400" />
                 <span>العملة الأساسية:</span>
               </label>
-              <select
+              <SearchableSelect
                 value={formData.currency}
                 onChange={e => setFormData({ ...formData, currency: e.target.value })}
                 className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
@@ -335,11 +345,11 @@ export const CompanySettingsView: React.FC = () => {
                 <option value="SAR">ريال سعودي (SAR - ر.س)</option>
                 <option value="AED">درهم إماراتي (AED - د.إ)</option>
                 <option value="EUR">يورو (EUR - €)</option>
-              </select>
+              </SearchableSelect>
             </div>
           </div>
 
-          {/* خيار إظهار أو إخفاء صفحة الشبكة */}
+          {/* خيار إظهار أو إخفاء صفحة الشبكة وتقرير أرباح وخسائر الشبكة */}
           <div className="p-4 rounded-2xl bg-cyan-50/60 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-800/40 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
@@ -347,10 +357,10 @@ export const CompanySettingsView: React.FC = () => {
               </div>
               <div>
                 <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <span>إظهار صفحة "الشبكة" في قائمة إدارة المبيعات</span>
+                  <span>إظهار صفحة "الشبكة" في إدارة المبيعات وتقرير أرباح وخسائر الشبكة</span>
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  تفعيل ظهور بند صفحة "الشبكة" ضمن القائمة المنسدلة لإدارة المبيعات في الشريط الجانبي
+                  تفعيل ظهور بند صفحة "الشبكة" في قائمة إدارة المبيعات وتقرير "أرباح وخسائر الشبكة" في قائمة التقارير بالشريط الجانبي
                 </p>
               </div>
             </div>
@@ -363,6 +373,33 @@ export const CompanySettingsView: React.FC = () => {
                 className="sr-only peer"
               />
               <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+            </label>
+          </div>
+
+          {/* خيار إظهار أو إخفاء نشاط البرمجيات والمنتجات الرقمية */}
+          <div className="p-4 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-600/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                <Code className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <span>تفعيل نشاط البرمجيات والمنتجات الرقمية</span>
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  إظهار خيار "منتج رقمي / برمجية" عند إضافة وتعديل المنتجات وإظهار تقرير "مبيعات البرمجيات" في قائمة التقارير
+                </p>
+              </div>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={Boolean(formData.show_software_features)} 
+                onChange={e => setFormData({ ...formData, show_software_features: e.target.checked })} 
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
             </label>
           </div>
 

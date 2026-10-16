@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { systemAuthStore, hasPermission, getUserWarehouse } from '../store/systemAuthStore';
 import {
   ArrowUpRight,
   Plus,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { SearchableSelect } from './SearchableSelect';
 
 interface Supplier {
   id: string;
@@ -74,6 +76,14 @@ interface MovementRecord {
 }
 
 export const StockReturnView: React.FC = () => {
+  const currentUser = systemAuthStore.currentUser;
+  const userWarehouse = getUserWarehouse(currentUser);
+  const isRestrictedWarehouse = currentUser?.role !== 'SUPER_ADMIN' && Boolean(userWarehouse) && userWarehouse !== 'ALL';
+
+  const canAdd = hasPermission(currentUser, 'stock_return', 'add');
+  const canPrint = hasPermission(currentUser, 'stock_return', 'print');
+  const canExport = hasPermission(currentUser, 'stock_return', 'export');
+
   // Master data
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>([]);
@@ -87,7 +97,7 @@ export const StockReturnView: React.FC = () => {
   // Return voucher modal state
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
-  const [sourceWarehouse, setSourceWarehouse] = useState('');
+  const [sourceWarehouse, setSourceWarehouse] = useState<string>(isRestrictedWarehouse ? userWarehouse : '');
   const [returnRefNo, setReturnRefNo] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
 
@@ -96,7 +106,7 @@ export const StockReturnView: React.FC = () => {
 
   // History filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterWarehouse, setFilterWarehouse] = useState('ALL');
+  const [filterWarehouse, setFilterWarehouse] = useState<string>(isRestrictedWarehouse ? userWarehouse : 'ALL');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [dateShortcut, setDateShortcut] = useState<DateShortcut>('ALL');
@@ -122,10 +132,12 @@ export const StockReturnView: React.FC = () => {
 
       if (suppData.success) setSuppliers(suppData.data || []);
       if (wareData.success) {
-        setWarehouses(wareData.data || []);
-        if (wareData.data?.length > 0 && !sourceWarehouse) {
-          setSourceWarehouse(wareData.data[0].name);
+        let whs = wareData.data || [];
+        if (isRestrictedWarehouse) {
+          whs = whs.filter((w: any) => w.name === userWarehouse || w.id === userWarehouse);
         }
+        setWarehouses(whs);
+        setSourceWarehouse(isRestrictedWarehouse ? userWarehouse : (whs.length > 0 ? whs[0].name : ''));
       }
       if (prodData.success) setProducts(prodData.data || []);
     } catch (err) {
@@ -141,7 +153,8 @@ export const StockReturnView: React.FC = () => {
       let url = '/api/stock-movements?movementType=RETURN';
       if (fromDate) url += `&fromDate=${fromDate}`;
       if (toDate) url += `&toDate=${toDate}`;
-      if (filterWarehouse !== 'ALL') url += `&warehouse=${encodeURIComponent(filterWarehouse)}`;
+      const activeWh = isRestrictedWarehouse ? userWarehouse : filterWarehouse;
+      if (activeWh && activeWh !== 'ALL') url += `&warehouse=${encodeURIComponent(activeWh)}`;
 
       const res = await fetch(url);
       const data = await res.json();
@@ -163,7 +176,11 @@ export const StockReturnView: React.FC = () => {
 
   // Open modal
   const openNewReturnModal = () => {
-    const defaultWh = warehouses.length > 0 ? warehouses[0].name : 'مخزن المتجر الرئيسي';
+    if (!canAdd) {
+      alert('ليس لديك صلاحية عمل إذن ارتجاع جديد');
+      return;
+    }
+    const defaultWh = isRestrictedWarehouse ? userWarehouse : (warehouses.length > 0 ? warehouses[0].name : 'مخزن المتجر الرئيسي');
     setSourceWarehouse(defaultWh);
     setSelectedSupplierId('');
     setReturnRefNo(`RET-${Date.now().toString().slice(-6)}`);
@@ -365,13 +382,15 @@ export const StockReturnView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={openNewReturnModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/25 transition-all cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إذن ارتجاع بضاعة جديد</span>
-          </button>
+          {canAdd && (
+            <button
+              onClick={openNewReturnModal}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/25 transition-all cursor-pointer active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إذن ارتجاع بضاعة جديد</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -391,16 +410,26 @@ export const StockReturnView: React.FC = () => {
 
           <div className="flex items-center gap-2 w-full md:w-auto">
             <Warehouse className="w-4 h-4 text-slate-400" />
-            <select
+            <SearchableSelect
               value={filterWarehouse}
               onChange={e => setFilterWarehouse(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500"
+              disabled={isRestrictedWarehouse}
+              className={`bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500 ${
+                isRestrictedWarehouse ? 'opacity-80 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''
+              }`}
+              searchPlaceholder="ابحث عن مخزن..."
+              minWidth="min-w-[180px]"
             >
-              <option value="ALL">جميع المخازن المصدر</option>
+              {!isRestrictedWarehouse && <option value="ALL">جميع المخازن المصدر</option>}
               {warehouses.map(w => (
                 <option key={w.id} value={w.name}>{w.name}</option>
               ))}
-            </select>
+            </SearchableSelect>
+            {isRestrictedWarehouse && (
+              <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2 py-1 rounded-lg font-bold shrink-0">
+                مخزنك المحدد
+              </span>
+            )}
           </div>
         </div>
 
@@ -423,62 +452,66 @@ export const StockReturnView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const headers = ['رقم الإذن', 'التاريخ', 'المخزن المصدر', 'عدد الأصناف', 'إجمالي القطع', 'القيمة الإجمالية', 'الملاحظات'];
-                const rows = filteredBatches.map(b => [
-                  b.ref,
-                  new Date(b.date).toLocaleDateString('ar-EG'),
-                  b.source_warehouse || '—',
-                  b.itemsCount,
-                  b.totalQty,
-                  b.totalVal,
-                  b.notes || ''
-                ]);
-                exportToExcel('سجل_ارتجاع_بضائع_موردين', headers, rows);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 cursor-pointer transition-colors"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>تصدير Excel</span>
-            </button>
-            <button
-              onClick={() => {
-                const tableHtml = `
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                      <tr style="background-color: #d97706; color: #fff;">
-                        <th>رقم الإذن</th>
-                        <th>التاريخ</th>
-                        <th>المخزن المصدر</th>
-                        <th>عدد الأصناف</th>
-                        <th>إجمالي القطع</th>
-                        <th>القيمة الإجمالية</th>
-                        <th>البيان</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${filteredBatches.map(b => `
-                        <tr>
-                          <td style="text-align: center; font-weight: bold;">${b.ref}</td>
-                          <td style="text-align: center;">${new Date(b.date).toLocaleDateString('ar-EG')}</td>
-                          <td>${b.source_warehouse || '—'}</td>
-                          <td style="text-align: center;">${b.itemsCount} صنف</td>
-                          <td style="text-align: center; font-weight: bold;">${b.totalQty}</td>
-                          <td style="text-align: center; color: #d97706; font-weight: bold;">${Number(b.totalVal).toLocaleString()} ج.م</td>
-                          <td>${b.notes || ''}</td>
+            {canExport && (
+              <button
+                onClick={() => {
+                  const headers = ['رقم الإذن', 'التاريخ', 'المخزن المصدر', 'عدد الأصناف', 'إجمالي القطع', 'القيمة الإجمالية', 'الملاحظات'];
+                  const rows = filteredBatches.map(b => [
+                    b.ref,
+                    new Date(b.date).toLocaleDateString('ar-EG'),
+                    b.source_warehouse || '—',
+                    b.itemsCount,
+                    b.totalQty,
+                    b.totalVal,
+                    b.notes || ''
+                  ]);
+                  exportToExcel('سجل_ارتجاع_بضائع_موردين', headers, rows);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 cursor-pointer transition-colors"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+            )}
+            {canPrint && (
+              <button
+                onClick={() => {
+                  const tableHtml = `
+                    <table style="width: 100%; border-collapse: collapse;">
+                      <thead>
+                        <tr style="background-color: #d97706; color: #fff;">
+                          <th>رقم الإذن</th>
+                          <th>التاريخ</th>
+                          <th>المخزن المصدر</th>
+                          <th>عدد الأصناف</th>
+                          <th>إجمالي القطع</th>
+                          <th>القيمة الإجمالية</th>
+                          <th>البيان</th>
                         </tr>
-                      `).join('')}
-                    </tbody>
-                  </table>
-                `;
-                printTableOrReceipt('تقرير أذونات ارتجاع البضائع للموردين', tableHtml);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>طباعة السجل</span>
-            </button>
+                      </thead>
+                      <tbody>
+                        ${filteredBatches.map(b => `
+                          <tr>
+                            <td style="text-align: center; font-weight: bold;">${b.ref}</td>
+                            <td style="text-align: center;">${new Date(b.date).toLocaleDateString('ar-EG')}</td>
+                            <td>${b.source_warehouse || '—'}</td>
+                            <td style="text-align: center;">${b.itemsCount} صنف</td>
+                            <td style="text-align: center; font-weight: bold;">${b.totalQty}</td>
+                            <td style="text-align: center; color: #d97706; font-weight: bold;">${Number(b.totalVal).toLocaleString()} ج.م</td>
+                            <td>${b.notes || ''}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  `;
+                  printTableOrReceipt('تقرير أذونات ارتجاع البضائع للموردين', tableHtml);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>طباعة السجل</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -580,11 +613,12 @@ export const StockReturnView: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
                     المورد المرتجع إليه: *
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={selectedSupplierId}
                     onChange={e => setSelectedSupplierId(e.target.value)}
                     className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                    searchPlaceholder="ابحث باسم المورد أو الشركة..."
                   >
                     <option value="">-- اختر المورد --</option>
                     {suppliers.map(s => (
@@ -592,23 +626,32 @@ export const StockReturnView: React.FC = () => {
                         {s.name} {s.company ? `(${s.company})` : ''}
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
                     مخزن خروج المرتجع: *
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={sourceWarehouse}
                     onChange={e => setSourceWarehouse(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                    disabled={isRestrictedWarehouse}
+                    className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 ${
+                      isRestrictedWarehouse ? 'opacity-80 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''
+                    }`}
+                    searchPlaceholder="ابحث عن مخزن..."
                   >
                     {warehouses.map(w => (
                       <option key={w.id} value={w.name}>{w.name}</option>
                     ))}
-                  </select>
+                  </SearchableSelect>
+                  {isRestrictedWarehouse && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-1 block">
+                      تم القفل على مخزنك المحدد
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -666,11 +709,12 @@ export const StockReturnView: React.FC = () => {
 
                           {/* Product Select */}
                           <td className="p-3">
-                            <select
+                            <SearchableSelect
                               required
                               value={it.productId}
                               onChange={e => updateItem(it.id, 'productId', e.target.value)}
                               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:border-amber-500"
+                              searchPlaceholder="ابحث باسم المنتج أو الكود..."
                             >
                               <option value="">-- اختر المنتج من الكتالوج --</option>
                               {products.map(p => (
@@ -678,7 +722,7 @@ export const StockReturnView: React.FC = () => {
                                   {p.name} (الكود: {p.code} - الرصيد: {p.current_stock} {p.unit})
                                 </option>
                               ))}
-                            </select>
+                            </SearchableSelect>
                           </td>
 
                           {/* Available Current Stock */}
@@ -861,48 +905,50 @@ export const StockReturnView: React.FC = () => {
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const tableHtml = `
-                      <div style="font-family: 'Cairo', sans-serif; padding: 15px;">
-                        <h2 style="color: #d97706; margin-bottom: 5px;">إذن ارتجاع بضاعة إلى مورد</h2>
-                        <p>رقم الإذن: <strong>${activeBatch.ref}</strong> | المخزن المصدر: <strong>${activeBatch.source_warehouse}</strong></p>
-                        <p>التاريخ: ${new Date(activeBatch.date).toLocaleString('ar-EG')}</p>
-                        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-                          <thead>
-                            <tr style="background-color: #d97706; color: #fff;">
-                              <th style="padding: 6px; border: 1px solid #ccc;">#</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">اسم الصنف</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">الكمية المرتجعة</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">سعر الوحدة</th>
-                              <th style="padding: 6px; border: 1px solid #ccc;">الإجمالي</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            ${activeBatch.items.map((it, idx) => `
-                              <tr>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${idx + 1}</td>
-                                <td style="padding: 6px; border: 1px solid #ccc;">${it.product_name}</td>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold;">${it.quantity}</td>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${it.unit_price} ج.م</td>
-                                <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold; color: #dc2626;">${it.total_price} ج.م</td>
+                {canPrint && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tableHtml = `
+                        <div style="font-family: 'Cairo', sans-serif; padding: 15px;">
+                          <h2 style="color: #d97706; margin-bottom: 5px;">إذن ارتجاع بضاعة إلى مورد</h2>
+                          <p>رقم الإذن: <strong>${activeBatch.ref}</strong> | المخزن المصدر: <strong>${activeBatch.source_warehouse}</strong></p>
+                          <p>التاريخ: ${new Date(activeBatch.date).toLocaleString('ar-EG')}</p>
+                          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                            <thead>
+                              <tr style="background-color: #d97706; color: #fff;">
+                                <th style="padding: 6px; border: 1px solid #ccc;">#</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">اسم الصنف</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">الكمية المرتجعة</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">سعر الوحدة</th>
+                                <th style="padding: 6px; border: 1px solid #ccc;">الإجمالي</th>
                               </tr>
-                            `).join('')}
-                          </tbody>
-                        </table>
-                        <div style="margin-top: 15px; font-weight: bold; text-align: left;">
-                          إجمالي قيمة المرتجع: ${Number(activeBatch.totalVal).toLocaleString()} ج.م
+                            </thead>
+                            <tbody>
+                              ${activeBatch.items.map((it, idx) => `
+                                <tr>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${idx + 1}</td>
+                                  <td style="padding: 6px; border: 1px solid #ccc;">${it.product_name}</td>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold;">${it.quantity}</td>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc;">${it.unit_price} ج.م</td>
+                                  <td style="text-align: center; padding: 6px; border: 1px solid #ccc; font-weight: bold; color: #dc2626;">${it.total_price} ج.م</td>
+                                </tr>
+                              `).join('')}
+                            </tbody>
+                          </table>
+                          <div style="margin-top: 15px; font-weight: bold; text-align: left;">
+                            إجمالي قيمة المرتجع: ${Number(activeBatch.totalVal).toLocaleString()} ج.م
+                          </div>
                         </div>
-                      </div>
-                    `;
-                    printTableOrReceipt(`إذن_ارتجاع_${activeBatch.ref}`, tableHtml);
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white cursor-pointer shadow-md"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة إذن الارتجاع</span>
-                </button>
+                      `;
+                      printTableOrReceipt(`إذن_ارتجاع_${activeBatch.ref}`, tableHtml);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white cursor-pointer shadow-md"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>طباعة إذن الارتجاع</span>
+                  </button>
+                )}
               </div>
 
               <button

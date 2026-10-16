@@ -45,6 +45,31 @@ export interface SystemInstallationState {
   configFileContent?: string;
 }
 
+export interface PagePermission {
+  view: boolean;
+  add?: boolean;
+  edit?: boolean;
+  delete?: boolean;
+  print?: boolean;
+  export?: boolean;
+  sale?: boolean;
+  return?: boolean;
+  credit?: boolean;
+  receive_payment?: boolean;
+  pay_expense?: boolean;
+  [key: string]: boolean | undefined;
+}
+
+export interface FinancialPermissions {
+  can_deposit?: boolean;
+  can_withdraw?: boolean;
+  can_transfer?: boolean;
+  can_customer_receipt?: boolean;
+  can_supplier_payment?: boolean;
+  can_employee_advance?: boolean;
+  can_view_all_balances?: boolean;
+}
+
 export interface CurrentUser {
   id: string;
   name: string;
@@ -54,6 +79,10 @@ export interface CurrentUser {
   roleTitleAr: string;
   avatarColor: string;
   accessibleUnits: ('SHOP' | 'FREELANCE' | 'BOTH')[];
+  permissions?: Record<string, PagePermission>;
+  assignedWarehouse?: string;
+  assignedTreasury?: string;
+  financialPermissions?: FinancialPermissions;
 }
 
 class SystemAuthStore {
@@ -162,5 +191,57 @@ class SystemAuthStore {
 }
 
 export const systemAuthStore = new SystemAuthStore();
+
+// ========================================================================
+// Helper functions for checking granular permissions & scoping
+// ========================================================================
+
+export function hasPermission(
+  user: CurrentUser | null,
+  pageId: string,
+  action: string
+): boolean {
+  if (!user) return false;
+  // SUPER_ADMIN always has full permissions
+  if (user.role === 'SUPER_ADMIN') return true;
+
+  // Check custom per-user permissions
+  if (user.permissions && user.permissions[pageId]) {
+    const perm = user.permissions[pageId];
+    if (perm[action] !== undefined) {
+      return Boolean(perm[action]);
+    }
+  }
+
+  // If no explicit permission matrix set yet, default to allowing unless restricted
+  return true;
+}
+
+export function hasFinancialPermission(
+  user: CurrentUser | null,
+  operation: keyof FinancialPermissions
+): boolean {
+  if (!user) return false;
+  if (user.role === 'SUPER_ADMIN') return true;
+
+  if (user.financialPermissions && user.financialPermissions[operation] !== undefined) {
+    return Boolean(user.financialPermissions[operation]);
+  }
+
+  return true;
+}
+
+export function getUserWarehouse(user: CurrentUser | null): string {
+  if (!user) return 'ALL';
+  if (user.role === 'SUPER_ADMIN') return 'ALL';
+  return user.assignedWarehouse || 'ALL';
+}
+
+export function getUserTreasury(user: CurrentUser | null): string {
+  if (!user) return 'ALL';
+  if (user.role === 'SUPER_ADMIN') return 'ALL';
+  return user.assignedTreasury || 'ALL';
+}
+
 // Auto load session on startup
 systemAuthStore.loadSavedSession();

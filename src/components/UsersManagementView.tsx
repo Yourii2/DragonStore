@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import SearchableSelect from './SearchableSelect';
 
 export interface UserRecord {
   id: number;
@@ -291,7 +292,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
 
           <div className="flex items-center gap-2 w-full md:w-auto">
             <ShieldCheck className="w-4 h-4 text-slate-400" />
-            <select
+            <SearchableSelect
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value)}
               className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-cyan-500"
@@ -300,7 +301,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
               {USER_ROLES.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
-            </select>
+            </SearchableSelect>
           </div>
         </div>
       </div>
@@ -547,7 +548,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   نوع المستخدم: *
                 </label>
-                <select
+                <SearchableSelect
                   value={formData.role}
                   onChange={e => {
                     const selected = USER_ROLES.find(r => r.value === e.target.value);
@@ -562,7 +563,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
                   {USER_ROLES.map(r => (
                     <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
-                </select>
+                </SearchableSelect>
               </div>
 
               {/* Action Buttons */}

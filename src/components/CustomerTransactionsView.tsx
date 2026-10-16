@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import SearchableSelect from './SearchableSelect';
 
 export interface CustomerOption {
   id: string;
@@ -351,7 +352,7 @@ export const CustomerTransactionsView: React.FC = () => {
 
         <div className="md:col-span-4 flex items-center gap-2">
           <Users className="w-4 h-4 text-slate-400 flex-shrink-0" />
-          <select
+          <SearchableSelect
             value={selectedCustomer}
             onChange={(e) => setSelectedCustomer(e.target.value)}
             className="w-full bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 cursor-pointer font-bold"
@@ -360,7 +361,7 @@ export const CustomerTransactionsView: React.FC = () => {
             {customers.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
-          </select>
+          </SearchableSelect>
         </div>
       </div>
 
@@ -456,7 +457,7 @@ export const CustomerTransactionsView: React.FC = () => {
             <form onSubmit={handleSaveTransaction} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">العميل المستفيد: <span className="text-rose-500">*</span></label>
-                <select
+                <SearchableSelect
                   value={txForm.customer_id}
                   onChange={(e) => setTxForm({ ...txForm, customer_id: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-bold cursor-pointer"
@@ -464,7 +465,7 @@ export const CustomerTransactionsView: React.FC = () => {
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>{c.name} (رصيده: {c.balance.toLocaleString()} ج.م)</option>
                   ))}
-                </select>
+                </SearchableSelect>
               </div>
 
               <div>
@@ -536,7 +537,7 @@ export const CustomerTransactionsView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">طريقة الدفع:</label>
-                  <select
+                  <SearchableSelect
                     value={txForm.payment_method}
                     onChange={(e) => setTxForm({ ...txForm, payment_method: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
@@ -546,7 +547,7 @@ export const CustomerTransactionsView: React.FC = () => {
                     <option value="BANK_TRANSFER">تحويل بنكي</option>
                     <option value="VODAFONE_CASH">محافظ إلكترونية</option>
                     <option value="CHECK">شيك بنكي</option>
-                  </select>
+                  </SearchableSelect>
                 </div>
               </div>
 

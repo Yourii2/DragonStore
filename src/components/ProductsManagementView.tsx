@@ -33,6 +33,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { compressImageFile } from '../utils/imageCompressor';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import SearchableSelect from './SearchableSelect';
 
 export type ProductType = 'PHYSICAL' | 'SERVICE' | 'DIGITAL';
 
@@ -73,6 +74,7 @@ export const ProductsManagementView: React.FC = () => {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSoftware, setShowSoftware] = useState<boolean>(true);
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -191,10 +193,11 @@ export const ProductsManagementView: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [prodRes, catRes, whRes] = await Promise.all([
+      const [prodRes, catRes, whRes, compRes] = await Promise.all([
         fetch('/api/products'),
         fetch('/api/categories'),
-        fetch('/api/warehouses')
+        fetch('/api/warehouses'),
+        fetch('/api/settings/company')
       ]);
 
       if (prodRes.ok) {
@@ -236,6 +239,13 @@ export const ProductsManagementView: React.FC = () => {
           setWarehouses(whData.data);
         }
       }
+
+      if (compRes && compRes.ok) {
+        const compData = await compRes.json();
+        if (compData.success && compData.data) {
+          setShowSoftware(compData.data.show_software_features !== undefined ? Boolean(compData.data.show_software_features) : true);
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch data:', err);
     } finally {
@@ -245,6 +255,14 @@ export const ProductsManagementView: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+
+    const handleSettingsUpdated = (e: any) => {
+      if (e?.detail && typeof e.detail.show_software_features === 'boolean') {
+        setShowSoftware(e.detail.show_software_features);
+      }
+    };
+    window.addEventListener('company-settings-updated', handleSettingsUpdated);
+    return () => window.removeEventListener('company-settings-updated', handleSettingsUpdated);
   }, []);
 
   // Open modal for new product
@@ -610,7 +628,7 @@ export const ProductsManagementView: React.FC = () => {
 
         <div className="md:col-span-4 flex items-center gap-2">
           <Tag className="w-4 h-4 text-slate-400 flex-shrink-0" />
-          <select
+          <SearchableSelect
             value={selectedCategoryFilter}
             onChange={(e) => setSelectedCategoryFilter(e.target.value)}
             className="w-full bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 cursor-pointer"
@@ -619,12 +637,12 @@ export const ProductsManagementView: React.FC = () => {
             {categories.map((c) => (
               <option key={c.id} value={c.name}>{c.name}</option>
             ))}
-          </select>
+          </SearchableSelect>
         </div>
 
         <div className="md:col-span-3 flex items-center gap-2">
           <Filter className="w-4 h-4 text-slate-400 flex-shrink-0" />
-          <select
+          <SearchableSelect
             value={selectedTypeFilter}
             onChange={(e) => setSelectedTypeFilter(e.target.value)}
             className="w-full bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 cursor-pointer"
@@ -632,8 +650,8 @@ export const ProductsManagementView: React.FC = () => {
             <option value="ALL">جميع أنواع المنتجات</option>
             <option value="PHYSICAL">منتج مادي / سلعة</option>
             <option value="SERVICE">خدمة / عمل حر</option>
-            <option value="DIGITAL">منتج رقمي / برمجية</option>
-          </select>
+            {showSoftware && <option value="DIGITAL">منتج رقمي / برمجية</option>}
+          </SearchableSelect>
         </div>
       </div>
 
@@ -918,7 +936,7 @@ export const ProductsManagementView: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
                     <Tag className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <select
+                    <SearchableSelect
                       value={productForm.category}
                       onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pr-10 pl-3 py-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 cursor-pointer font-bold"
@@ -926,7 +944,7 @@ export const ProductsManagementView: React.FC = () => {
                       {categories.map((c) => (
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
-                    </select>
+                    </SearchableSelect>
                   </div>
                   <button
                     type="button"
@@ -990,7 +1008,7 @@ export const ProductsManagementView: React.FC = () => {
                 <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1.5">
                   5. نوع المنتج (Product Type):
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className={`grid ${showSoftware ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                   <button
                     type="button"
                     onClick={() => setProductForm({ ...productForm, product_type: 'PHYSICAL' })}
@@ -1017,18 +1035,20 @@ export const ProductsManagementView: React.FC = () => {
                     <span>خدمة / عمل</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setProductForm({ ...productForm, product_type: 'DIGITAL' })}
-                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border text-xs font-black transition-all cursor-pointer ${
-                      productForm.product_type === 'DIGITAL'
-                        ? 'bg-purple-500/10 border-purple-500 text-purple-600 dark:text-purple-400 shadow-sm'
-                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
-                    }`}
-                  >
-                    <Cpu className="w-4 h-4" />
-                    <span>منتج رقمي / برمجية</span>
-                  </button>
+                  {showSoftware && (
+                    <button
+                      type="button"
+                      onClick={() => setProductForm({ ...productForm, product_type: 'DIGITAL' })}
+                      className={`flex items-center justify-center gap-2 p-3 rounded-2xl border text-xs font-black transition-all cursor-pointer ${
+                        productForm.product_type === 'DIGITAL'
+                          ? 'bg-purple-500/10 border-purple-500 text-purple-600 dark:text-purple-400 shadow-sm'
+                          : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <Cpu className="w-4 h-4" />
+                      <span>منتج رقمي / برمجية</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1108,7 +1128,7 @@ export const ProductsManagementView: React.FC = () => {
                     {/* Warehouse Dropdown */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">المخزن الموجود فيه:</label>
-                      <select
+                      <SearchableSelect
                         value={productForm.warehouse}
                         onChange={(e) => setProductForm({ ...productForm, warehouse: e.target.value })}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 cursor-pointer"
@@ -1120,7 +1140,7 @@ export const ProductsManagementView: React.FC = () => {
                         ) : (
                           <option value="مخزن المتجر الرئيسي">مخزن المتجر الرئيسي</option>
                         )}
-                      </select>
+                      </SearchableSelect>
                     </div>
 
                     {/* Min Alert Stock */}

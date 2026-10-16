@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import SearchableSelect from './SearchableSelect';
 
 export interface EmployeeOption {
   id: string;
@@ -408,7 +409,7 @@ export const EmployeeTransactionsView: React.FC = () => {
         {/* Employee Dropdown Selector */}
         <div className="sm:w-72 bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-2">
           <Users className="w-4 h-4 text-slate-400 mr-1" />
-          <select
+          <SearchableSelect
             value={selectedEmployee}
             onChange={(e) => setSelectedEmployee(e.target.value)}
             className="w-full bg-transparent text-xs text-slate-900 dark:text-slate-100 focus:outline-none font-bold"
@@ -419,7 +420,7 @@ export const EmployeeTransactionsView: React.FC = () => {
                 {emp.name} {emp.job_title || emp.jobTitle ? `(${emp.job_title || emp.jobTitle})` : ''}
               </option>
             ))}
-          </select>
+          </SearchableSelect>
         </div>
 
         {/* Search Input Bar */}
@@ -556,7 +557,7 @@ export const EmployeeTransactionsView: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   الموظف المستهدف: <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <SearchableSelect
                   required
                   value={txForm.employee_id}
                   onChange={(e) => setTxForm({ ...txForm, employee_id: e.target.value })}
@@ -568,7 +569,7 @@ export const EmployeeTransactionsView: React.FC = () => {
                       {emp.name} {emp.job_title || emp.jobTitle ? `(${emp.job_title || emp.jobTitle})` : ''}
                     </option>
                   ))}
-                </select>
+                </SearchableSelect>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -576,7 +577,7 @@ export const EmployeeTransactionsView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     تصنيف المعاملة: <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     value={txForm.flow}
                     onChange={(e) => {
                       const flow = e.target.value as 'INCENTIVE' | 'DEDUCTION' | 'PAYOUT';
@@ -591,14 +592,14 @@ export const EmployeeTransactionsView: React.FC = () => {
                     <option value="INCENTIVE">عمولة أو حافز إضافي (+)</option>
                     <option value="DEDUCTION">سلفة أو خصم مستقطع (-)</option>
                     <option value="PAYOUT">صرف مسير الراتب</option>
-                  </select>
+                  </SearchableSelect>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     نوع الحركة:
                   </label>
-                  <select
+                  <SearchableSelect
                     value={txForm.transaction_type}
                     onChange={(e) => setTxForm({ ...txForm, transaction_type: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-bold"
@@ -618,7 +619,7 @@ export const EmployeeTransactionsView: React.FC = () => {
                     {txForm.flow === 'PAYOUT' && (
                       <option value="SALARY_PAYMENT">صرف راتب مستحق</option>
                     )}
-                  </select>
+                  </SearchableSelect>
                 </div>
               </div>
 
@@ -658,7 +659,7 @@ export const EmployeeTransactionsView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     طريقة الدفع / الصرف:
                   </label>
-                  <select
+                  <SearchableSelect
                     value={txForm.payment_method}
                     onChange={(e) => setTxForm({ ...txForm, payment_method: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
@@ -667,7 +668,7 @@ export const EmployeeTransactionsView: React.FC = () => {
                     <option value="BANK_TRANSFER">تحويل بنكي</option>
                     <option value="INSTAPAY">انستاباي (InstaPay)</option>
                     <option value="VODAFONE_CASH">فودافون كاش ومحافظ</option>
-                  </select>
+                  </SearchableSelect>
                 </div>
 
                 <div>

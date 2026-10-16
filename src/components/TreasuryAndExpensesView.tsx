@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { systemAuthStore, hasFinancialPermission } from '../store/systemAuthStore';
 import { 
   CircleDollarSign, 
   Wallet, 
@@ -22,6 +23,8 @@ import {
   ArrowUpRight,
   ArrowDownLeft
 } from 'lucide-react';
+import SearchableSelect from './SearchableSelect';
+
 
 interface AccountItem {
   id: string;
@@ -64,6 +67,10 @@ type ModalType =
   | 'TRANSFER';
 
 export const TreasuryAndExpensesView: React.FC = () => {
+  const currentUser = systemAuthStore.currentUser;
+  const userAssignedTreasury = currentUser?.assignedTreasury;
+  const isRestrictedTreasury = currentUser?.role !== 'SUPER_ADMIN' && Boolean(userAssignedTreasury) && userAssignedTreasury !== 'ALL';
+
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
@@ -103,7 +110,16 @@ export const TreasuryAndExpensesView: React.FC = () => {
 
       if (accRes.ok) {
         const json = await accRes.json();
-        if (json.success && Array.isArray(json.data)) setAccounts(json.data);
+        if (json.success && Array.isArray(json.data)) {
+          let list = json.data;
+          if (isRestrictedTreasury) {
+            list = list.filter((a: any) => a.id === userAssignedTreasury || a.name === userAssignedTreasury);
+          }
+          setAccounts(list);
+          if (list.length > 0) {
+            setSelectedAccountId(list[0].id);
+          }
+        }
       }
       if (custRes.ok) {
         const json = await custRes.json();
@@ -119,7 +135,13 @@ export const TreasuryAndExpensesView: React.FC = () => {
       }
       if (txRes.ok) {
         const json = await txRes.json();
-        if (json.success && Array.isArray(json.data)) setRecentTransactions(json.data.slice(0, 8));
+        if (json.success && Array.isArray(json.data)) {
+          let list = json.data;
+          if (isRestrictedTreasury) {
+            list = list.filter((t: any) => t.account_id === userAssignedTreasury || t.to_account_id === userAssignedTreasury || t.account_name === userAssignedTreasury);
+          }
+          setRecentTransactions(list.slice(0, 8));
+        }
       }
     } catch (e) {
       console.error(e);
@@ -364,6 +386,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
       {/* Main 6 Actions Grid (The user's requested operations) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* 1. إضافة مصروفات */}
+        {hasFinancialPermission(currentUser, 'can_withdraw') && (
         <button
           onClick={() => openModal('EXPENSE')}
           className="group relative bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:shadow-xl hover:border-rose-500/30 transition-all text-right cursor-pointer overflow-hidden transform hover:-translate-y-1"
@@ -381,8 +404,10 @@ export const TreasuryAndExpensesView: React.FC = () => {
             تسجيل مصروفات الكهرباء، الإيجار، والمصاريف التشغيلية مع فحص رصيد الخزينة
           </p>
         </button>
+        )}
 
         {/* 2. إضافة إيداع */}
+        {hasFinancialPermission(currentUser, 'can_deposit') && (
         <button
           onClick={() => openModal('DEPOSIT')}
           className="group relative bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:shadow-xl hover:border-emerald-500/30 transition-all text-right cursor-pointer overflow-hidden transform hover:-translate-y-1"
@@ -400,8 +425,10 @@ export const TreasuryAndExpensesView: React.FC = () => {
             توريد نقدية إضافية، إيرادات رأسمالية، أو تغذية رصيد الخزائن والبنوك
           </p>
         </button>
+        )}
 
         {/* 3. تحصيل من عميل */}
+        {hasFinancialPermission(currentUser, 'can_customer_receipt') && (
         <button
           onClick={() => openModal('CUSTOMER_RECEIPT')}
           className="group relative bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:shadow-xl hover:border-cyan-500/30 transition-all text-right cursor-pointer overflow-hidden transform hover:-translate-y-1"
@@ -419,8 +446,10 @@ export const TreasuryAndExpensesView: React.FC = () => {
             قبض دفعة من عميل، إيداعها بالخزينة، وتخفيض مديونية العميل آلياً
           </p>
         </button>
+        )}
 
         {/* 4. دفع إلى مورد */}
+        {hasFinancialPermission(currentUser, 'can_supplier_payment') && (
         <button
           onClick={() => openModal('SUPPLIER_PAYMENT')}
           className="group relative bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:shadow-xl hover:border-amber-500/30 transition-all text-right cursor-pointer overflow-hidden transform hover:-translate-y-1"
@@ -438,8 +467,10 @@ export const TreasuryAndExpensesView: React.FC = () => {
             صرف دفعات للموردين والشركات مع التحقق الصارم من رصيد الخزينة
           </p>
         </button>
+        )}
 
         {/* 5. مسحوبات الموظفين */}
+        {hasFinancialPermission(currentUser, 'can_employee_advance') && (
         <button
           onClick={() => openModal('EMPLOYEE_WITHDRAWAL')}
           className="group relative bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:shadow-xl hover:border-purple-500/30 transition-all text-right cursor-pointer overflow-hidden transform hover:-translate-y-1"
@@ -457,8 +488,10 @@ export const TreasuryAndExpensesView: React.FC = () => {
             صرف سلف الموظفين مع فحص الراتب، السلف السابقة، والتأكد من عدم تجاوز الراتب
           </p>
         </button>
+        )}
 
         {/* 6. نقل من خزينة لأخرى */}
+        {hasFinancialPermission(currentUser, 'can_transfer') && (
         <button
           onClick={() => openModal('TRANSFER')}
           className="group relative bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:shadow-xl hover:border-blue-500/30 transition-all text-right cursor-pointer overflow-hidden transform hover:-translate-y-1"
@@ -476,6 +509,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
             مناقلة سيولة بين الكاشير، الخزينة الرئيسية، البنك، أو المحافظ مع التأكد من الرصيد
           </p>
         </button>
+        )}
       </div>
 
       {/* Recent Financial Transactions Feed */}
@@ -582,18 +616,26 @@ export const TreasuryAndExpensesView: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   {activeModal === 'TRANSFER' ? 'الخزينة المحول منها:' : 'اختيار الخزينة:'} <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <SearchableSelect
                   required
                   value={selectedAccountId}
                   onChange={(e) => setSelectedAccountId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-bold"
+                  disabled={isRestrictedTreasury}
+                  className={`w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-bold ${
+                    isRestrictedTreasury ? 'opacity-80 bg-slate-200/50 dark:bg-slate-800/50 cursor-not-allowed' : ''
+                  }`}
                 >
                   {accounts.map(acc => (
                     <option key={acc.id} value={acc.id}>
                       {acc.name} (الرصيد المتاح: {acc.balance.toLocaleString()} ج.م)
                     </option>
                   ))}
-                </select>
+                </SearchableSelect>
+                {isRestrictedTreasury && (
+                  <div className="text-[10px] text-amber-500 font-bold mt-1">
+                    * تم قفل وتحديد الخزينة المصرح بها لحسابك تلقائياً
+                  </div>
+                )}
                 {currentAccount && (
                   <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
                     <span>الرصيد المتاح الحالي:</span>
@@ -610,7 +652,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     الخزينة المحول إليها: <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={targetAccountId}
                     onChange={(e) => setTargetAccountId(e.target.value)}
@@ -621,7 +663,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                         {acc.name} (الرصيد الحالي: {acc.balance.toLocaleString()} ج.م)
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                 </div>
               )}
 
@@ -631,7 +673,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     اختيار العميل: <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={selectedCustomerId}
                     onChange={(e) => setSelectedCustomerId(e.target.value)}
@@ -642,7 +684,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                         {c.name} ({c.phone})
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                   {currentCustomer && (
                     <div className="bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 mt-2 text-[11px] flex items-center justify-between">
                       <span className="text-slate-400">حساب العميل الحالي:</span>
@@ -660,7 +702,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     اختيار المورد: <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     required
                     value={selectedSupplierId}
                     onChange={(e) => setSelectedSupplierId(e.target.value)}
@@ -671,7 +713,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                         {s.name} ({s.phone})
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                   {currentSupplier && (
                     <div className="bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 mt-2 text-[11px] flex items-center justify-between">
                       <span className="text-slate-400">مستحقات المورد الحالية:</span>
@@ -690,7 +732,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       اختيار الموظف: <span className="text-rose-500">*</span>
                     </label>
-                    <select
+                    <SearchableSelect
                       required
                       value={selectedEmployeeId}
                       onChange={(e) => setSelectedEmployeeId(e.target.value)}
@@ -701,7 +743,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
                           {emp.name} - {emp.job_title}
                         </option>
                       ))}
-                    </select>
+                    </SearchableSelect>
                   </div>
 
                   {currentEmployee && (

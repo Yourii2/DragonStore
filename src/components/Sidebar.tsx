@@ -30,7 +30,12 @@ import {
   Download,
   TrendingUp,
   FileText,
-  Wifi
+  Wifi,
+  Printer,
+  Wrench,
+  Code,
+  Boxes,
+  Globe
 } from 'lucide-react';
 
 interface SubMenuItem {
@@ -48,6 +53,8 @@ interface MenuItem {
   children?: SubMenuItem[];
 }
 
+import { CurrentUser, hasPermission } from '../store/systemAuthStore';
+
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -55,6 +62,7 @@ interface SidebarProps {
   onClose: () => void;
   isDarkMode: boolean;
   onLogout: () => void;
+  currentUser?: CurrentUser | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -63,9 +71,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
   isDarkMode,
-  onLogout
+  onLogout,
+  currentUser
 }) => {
   const [showNetworkPage, setShowNetworkPage] = useState<boolean>(false);
+  const [showSoftwareFeatures, setShowSoftwareFeatures] = useState<boolean>(true);
 
   useEffect(() => {
     const fetchCompanyProfile = async () => {
@@ -74,12 +84,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
         const data = await res.json();
         if (data.success && data.data) {
           setShowNetworkPage(Boolean(data.data.show_network_page));
+          if (data.data.show_software_features !== undefined) {
+            setShowSoftwareFeatures(Boolean(data.data.show_software_features));
+          }
         }
       } catch (e) {
         console.error('Failed to load company profile for sidebar', e);
       }
     };
     fetchCompanyProfile();
+
+    const handleSettingsUpdated = (e: any) => {
+      if (e?.detail) {
+        if (typeof e.detail.show_network_page === 'boolean') {
+          setShowNetworkPage(e.detail.show_network_page);
+        }
+        if (typeof e.detail.show_software_features === 'boolean') {
+          setShowSoftwareFeatures(e.detail.show_software_features);
+        }
+      } else {
+        fetchCompanyProfile();
+      }
+    };
+
+    window.addEventListener('company-settings-updated', handleSettingsUpdated);
+    return () => {
+      window.removeEventListener('company-settings-updated', handleSettingsUpdated);
+    };
   }, [activeTab]);
 
   // Navigation structure requested by user with collapsible dropdowns
@@ -91,6 +122,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (showNetworkPage) {
     salesChildren.push({ id: 'network_page', label: 'الشبكه', icon: Wifi });
   }
+
+  const reportsChildren: SubMenuItem[] = [
+    { id: 'reports_sales', label: 'تقرير المبيعات والارباح', icon: Receipt },
+    { id: 'reports_physical', label: 'تقرير مبيعات السلع المادية', icon: Boxes },
+    { id: 'reports_maintenance', label: 'تقرير أرباح الصيانة', icon: Wrench },
+    ...(showSoftwareFeatures ? [{ id: 'reports_software', label: 'تقرير مبيعات البرمجيات', icon: Code }] : []),
+    ...(showNetworkPage ? [{ id: 'reports_network', label: 'تقرير أرباح وخسائر الشبكة', icon: Globe }] : []),
+    { id: 'reports_inventory', label: 'تقرير تقييم المخزون والنواقص', icon: Warehouse },
+    { id: 'reports_treasury', label: 'تقرير حركات الخزائن والسيوله', icon: Coins },
+    { id: 'reports_customers', label: 'تقرير ارصده العملاء والديون', icon: Users },
+    { id: 'reports_suppliers', label: 'تقرير ارصده ومستحقات الموردين', icon: Truck },
+    { id: 'reports_expenses', label: 'تقرير سجل وتحليل المصروفات', icon: CircleDollarSign },
+    { id: 'reports_pnl', label: 'قائمه الارباح والخسائر (P&L)', icon: TrendingUp }
+  ];
 
   const menuItems: MenuItem[] = [
     { 
@@ -152,15 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'اداره تقارير', 
       icon: FileSpreadsheet, 
       isDropdown: true,
-      children: [
-        { id: 'reports_sales', label: 'تقرير المبيعات والارباح', icon: Receipt },
-        { id: 'reports_inventory', label: 'تقرير تقييم المخزون والنواقص', icon: Warehouse },
-        { id: 'reports_treasury', label: 'تقرير حركات الخزائن والسيوله', icon: Coins },
-        { id: 'reports_customers', label: 'تقرير ارصده العملاء والديون', icon: Users },
-        { id: 'reports_suppliers', label: 'تقرير ارصده ومستحقات الموردين', icon: Truck },
-        { id: 'reports_expenses', label: 'تقرير سجل وتحليل المصروفات', icon: CircleDollarSign },
-        { id: 'reports_pnl', label: 'قائمه الارباح والخسائر (P&L)', icon: TrendingUp }
-      ]
+      children: reportsChildren
     },
     { 
       id: 'finance_group', 
@@ -204,11 +241,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { id: 'settings_connection', label: 'اعدادات الاتصال', icon: Radio },
         { id: 'settings_company', label: 'اعدادات الشركه', icon: Building },
+        { id: 'settings_print', label: 'اعدادات الطباعه', icon: Printer },
         { id: 'settings_activation', label: 'اعدادات التفعيل', icon: CheckCircle },
         { id: 'settings_update', label: 'اعدادات التحديث', icon: Download }
       ]
     }
   ];
+
+  // Filter menu items by user permissions
+  const visibleMenuItems = menuItems.map(item => {
+    if (!item.isDropdown) {
+      const allowed = hasPermission(currentUser || null, item.id, 'view');
+      return allowed ? item : null;
+    }
+    const filteredChildren = item.children?.filter(child => 
+      hasPermission(currentUser || null, child.id, 'view')
+    ) || [];
+    if (filteredChildren.length === 0) return null;
+    return {
+      ...item,
+      children: filteredChildren
+    };
+  }).filter(Boolean) as MenuItem[];
 
   // Helper to determine which group is currently active
   const isGroupActive = (item: MenuItem) => {
@@ -219,7 +273,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // State to track open/collapsed dropdowns (open the active one by default)
   const [openGroups, setOpenGroups] = useState<{ [key: string]: boolean }>(() => {
     const initial: { [key: string]: boolean } = {};
-    menuItems.forEach(item => {
+    visibleMenuItems.forEach(item => {
       if (item.isDropdown && isGroupActive(item)) {
         initial[item.id] = true;
       }
@@ -284,7 +338,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             القائمة الرئيسية للنظام
           </div>
 
-          {menuItems.map((item) => {
+          {visibleMenuItems.length === 0 ? (
+            <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-xs font-bold leading-relaxed">
+              <ShieldCheck className="w-8 h-8 mx-auto mb-2 opacity-40 text-cyan-500" />
+              <span>لا توجد شاشات مصرح بها لحسابك حالياً.</span>
+            </div>
+          ) : (
+            visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const isGroup = item.isDropdown;
             const hasActiveChild = isGroupActive(item);
@@ -393,7 +453,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
             );
-          })}
+          })
+          )}
 
           {/* Logout Action Item */}
           <div className="pt-2 border-t border-slate-800/60 mt-3">

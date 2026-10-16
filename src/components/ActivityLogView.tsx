@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import SearchableSelect from './SearchableSelect';
 
 export interface AuditLogRecord {
   id: string;
@@ -185,7 +186,7 @@ export const ActivityLogView: React.FC = () => {
           {/* User Filter */}
           <div className="flex items-center gap-2 w-full md:w-auto">
             <User className="w-4 h-4 text-slate-400" />
-            <select
+            <SearchableSelect
               value={selectedUser}
               onChange={e => setSelectedUser(e.target.value)}
               className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-cyan-500"
@@ -194,13 +195,13 @@ export const ActivityLogView: React.FC = () => {
               {usersList.map(u => (
                 <option key={u} value={u}>{u}</option>
               ))}
-            </select>
+            </SearchableSelect>
           </div>
 
           {/* Module Filter */}
           <div className="flex items-center gap-2 w-full md:w-auto">
             <Layers className="w-4 h-4 text-slate-400" />
-            <select
+            <SearchableSelect
               value={selectedModule}
               onChange={e => setSelectedModule(e.target.value)}
               className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-cyan-500"
@@ -209,7 +210,7 @@ export const ActivityLogView: React.FC = () => {
               {modulesList.map(m => (
                 <option key={m} value={m}>{m}</option>
               ))}
-            </select>
+            </SearchableSelect>
           </div>
         </div>
 
