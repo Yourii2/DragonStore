@@ -27,6 +27,7 @@ import SearchableSelect from './SearchableSelect';
 
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 export interface EmployeeItem {
   id: string;
@@ -158,7 +159,7 @@ export const EmployeesManagementView: React.FC = () => {
   const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.phone.trim() || !formData.job_title.trim()) {
-      alert('يرجى إدخال اسم الموظف، المسمى الوظيفي، ورقم الهاتف');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم الموظف، المسمى الوظيفي، ورقم الهاتف');
       return;
     }
 
@@ -192,35 +193,45 @@ export const EmployeesManagementView: React.FC = () => {
           department: 'عام',
           email: ''
         });
+        showToast(editingEmployee ? 'تم تحديث بيانات الموظف بنجاح' : 'تمت إضافة الموظف بنجاح');
         fetchEmployees();
       } else {
-        alert(data.message || 'فشل حفظ بيانات الموظف');
+        showError('فشل الحفظ', data.message || 'فشل حفظ بيانات الموظف');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال', err.message);
     }
   };
 
   // Delete Employee
   const handleDeleteEmployee = async (emp: EmployeeItem) => {
     if (emp.advances > 0) {
-      alert(`لا يمكن حذف الموظف (${emp.name}) لوجود سلف وخصومات معلقة بقيمة (${emp.advances.toLocaleString()} ج.م). يجب تصفية الحساب أولاً.`);
+      showWarning(
+        'لا يمكن حذف الموظف',
+        `لا يمكن حذف الموظف (${emp.name}) لوجود سلف وخصومات معلقة بقيمة (${emp.advances.toLocaleString()} ج.م). يجب تصفية الحساب أولاً.`
+      );
       return;
     }
 
-    if (!window.confirm(`هل أنت متأكد من حذف الموظف: "${emp.name}"؟`)) return;
+    const confirmed = await showConfirm(
+      'تأكيد حذف الموظف',
+      `هل أنت متأكد من رغبتك في حذف الموظف: "${emp.name}" نهائياً من النظام؟`,
+      { isDanger: true, confirmText: 'نعم، حذف الموظف', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/employees/${emp.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
+        showToast('تم حذف الموظف بنجاح');
         fetchEmployees();
       } else {
-        alert(data.message || 'فشل حذف الموظف');
+        showError('فشل الحذف', data.message || 'فشل حذف الموظف');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('فشل حذف الموظف');
+      showError('خطأ أثناء الحذف', err.message);
     }
   };
 

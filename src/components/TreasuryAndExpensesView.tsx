@@ -24,6 +24,7 @@ import {
   ArrowDownLeft
 } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
+import { showWarning, showError, showSuccess, showToast } from '../utils/swal';
 
 
 interface AccountItem {
@@ -93,6 +94,24 @@ export const TreasuryAndExpensesView: React.FC = () => {
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
 
+  // Expense Categories States
+  const DEFAULT_EXPENSE_CATEGORIES = [
+    'كهرباء ومياه ومرافق',
+    'إيجارات ومقرات',
+    'ضيافة وبوفيه ونثريات',
+    'صيانة ومعدات وقطع غيار',
+    'نقل وشحن ومواصلات',
+    'دعاية وتسويق وإعلانات',
+    'برمجيات واشتراكات وسيرفرات',
+    'أدوات مكتبية ومطبوعات',
+    'رسوم وتراخيص ومصروفات حكومية',
+    'مصروفات تشغيلية عامة'
+  ];
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(DEFAULT_EXPENSE_CATEGORIES);
+  const [expenseCategory, setExpenseCategory] = useState<string>('كهرباء ومياه ومرافق');
+  const [isCustomCategory, setIsCustomCategory] = useState<boolean>(false);
+  const [customCategory, setCustomCategory] = useState<string>('');
+
   // Status feedback
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -100,13 +119,21 @@ export const TreasuryAndExpensesView: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [accRes, custRes, supRes, empRes, txRes] = await Promise.all([
+      const [accRes, custRes, supRes, empRes, txRes, catRes] = await Promise.all([
         fetch('/api/accounts'),
         fetch('/api/customers'),
         fetch('/api/suppliers'),
         fetch('/api/employees'),
-        fetch('/api/financial-transactions')
+        fetch('/api/financial-transactions'),
+        fetch('/api/expenses/categories')
       ]);
+
+      if (catRes.ok) {
+        const catJson = await catRes.json();
+        if (catJson.success && Array.isArray(catJson.categories) && catJson.categories.length > 0) {
+          setExpenseCategories(catJson.categories);
+        }
+      }
 
       if (accRes.ok) {
         const json = await accRes.json();
@@ -166,6 +193,9 @@ export const TreasuryAndExpensesView: React.FC = () => {
     setActiveModal(type);
     setAmount('');
     setReason('');
+    setExpenseCategory(expenseCategories[0] || 'كهرباء ومياه ومرافق');
+    setIsCustomCategory(false);
+    setCustomCategory('');
     setFeedback(null);
     setPaymentMethod('CASH');
     if (accounts.length > 0) setSelectedAccountId(accounts[0].id);
@@ -177,6 +207,8 @@ export const TreasuryAndExpensesView: React.FC = () => {
 
   const closeModal = () => {
     setActiveModal('NONE');
+    setIsCustomCategory(false);
+    setCustomCategory('');
     setFeedback(null);
   };
 
@@ -185,25 +217,27 @@ export const TreasuryAndExpensesView: React.FC = () => {
     e.preventDefault();
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) {
-      alert('يرجى إدخال مبلغ صحيح أكبر من الصفر');
+      showWarning('مبلغ غير صحيح', 'يرجى إدخال مبلغ صحيح أكبر من الصفر');
       return;
     }
 
     if (!selectedAccountId) {
-      alert('يرجى اختيار الخزينة');
+      showWarning('بيانات غير مكتملة', 'يرجى اختيار الخزينة');
       return;
     }
 
     // 1. Validation for Expense
     if (activeModal === 'EXPENSE') {
       if (!currentAccount || currentAccount.balance < numAmount) {
-        alert(`رصيد الخزينة (${currentAccount?.name}) غير كافٍ للصرف. الرصيد المتاح: ${currentAccount?.balance.toLocaleString()} ج.م`);
+        showWarning('رصيد غير كافٍ', `رصيد الخزينة (${currentAccount?.name}) غير كافٍ للصرف. الرصيد المتاح: ${currentAccount?.balance.toLocaleString()} ج.م`);
         return;
       }
       if (!reason.trim()) {
-        alert('يرجى كتابة سبب المصروف أو البيان');
+        showWarning('بيانات غير مكتملة', 'يرجى كتابة سبب المصروف أو البيان');
         return;
       }
+
+      const finalCategory = isCustomCategory ? (customCategory.trim() || 'مصروفات تشغيلية') : (expenseCategory || 'مصروفات تشغيلية');
 
       await executeTransaction({
         account_id: selectedAccountId,
@@ -211,7 +245,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
         flow: 'OUT',
         amount: numAmount,
         transaction_type: 'EXPENSE',
-        category: 'مصروفات تشغيلية',
+        category: finalCategory,
         notes: reason.trim(),
         payment_method: paymentMethod
       });
@@ -220,7 +254,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
     // 2. Validation for Deposit
     else if (activeModal === 'DEPOSIT') {
       if (!reason.trim()) {
-        alert('يرجى كتابة سبب الإيداع');
+        showWarning('بيانات غير مكتملة', 'يرجى كتابة سبب الإيداع');
         return;
       }
 
@@ -239,7 +273,7 @@ export const TreasuryAndExpensesView: React.FC = () => {
     // 3. Validation for Customer Receipt
     else if (activeModal === 'CUSTOMER_RECEIPT') {
       if (!selectedCustomerId || !currentCustomer) {
-        alert('يرجى اختيار العميل');
+        showWarning('بيانات غير مكتملة', 'يرجى اختيار العميل');
         return;
       }
 
@@ -261,11 +295,11 @@ export const TreasuryAndExpensesView: React.FC = () => {
     // 4. Validation for Supplier Payment
     else if (activeModal === 'SUPPLIER_PAYMENT') {
       if (!selectedSupplierId || !currentSupplier) {
-        alert('يرجى اختيار المورد');
+        showWarning('بيانات غير مكتملة', 'يرجى اختيار المورد');
         return;
       }
       if (!currentAccount || currentAccount.balance < numAmount) {
-        alert(`رصيد الخزينة (${currentAccount?.name}) غير كافٍ للسداد للمورد. الرصيد المتاح: ${currentAccount?.balance.toLocaleString()} ج.م`);
+        showWarning('رصيد غير كافٍ', `رصيد الخزينة (${currentAccount?.name}) غير كافٍ للسداد للمورد. الرصيد المتاح: ${currentAccount?.balance.toLocaleString()} ج.م`);
         return;
       }
 
@@ -287,17 +321,17 @@ export const TreasuryAndExpensesView: React.FC = () => {
     // 5. Validation for Employee Withdrawal
     else if (activeModal === 'EMPLOYEE_WITHDRAWAL') {
       if (!selectedEmployeeId || !currentEmployee) {
-        alert('يرجى اختيار الموظف');
+        showWarning('بيانات غير مكتملة', 'يرجى اختيار الموظف');
         return;
       }
       if (!currentAccount || currentAccount.balance < numAmount) {
-        alert(`رصيد الخزينة (${currentAccount?.name}) غير كافٍ لصرف سلفة الموظف. الرصيد المتاح: ${currentAccount?.balance.toLocaleString()} ج.م`);
+        showWarning('رصيد غير كافٍ', `رصيد الخزينة (${currentAccount?.name}) غير كافٍ لصرف سلفة الموظف. الرصيد المتاح: ${currentAccount?.balance.toLocaleString()} ج.م`);
         return;
       }
       // Check employee limit
       const remainingSalary = currentEmployee.net_payable;
       if (numAmount > remainingSalary) {
-        alert(`لا يمكن صرف مبلغ (${numAmount.toLocaleString()} ج.م) لأنه يتجاوز المتبقي من راتب الموظف (${remainingSalary.toLocaleString()} ج.م).`);
+        showWarning('تجاوز الحد المسموح', `لا يمكن صرف مبلغ (${numAmount.toLocaleString()} ج.م) لأنه يتجاوز المتبقي من راتب الموظف (${remainingSalary.toLocaleString()} ج.م).`);
         return;
       }
 
@@ -319,11 +353,11 @@ export const TreasuryAndExpensesView: React.FC = () => {
     // 6. Validation for Transfer
     else if (activeModal === 'TRANSFER') {
       if (!targetAccountId || targetAccountId === selectedAccountId) {
-        alert('يرجى اختيار خزينة محول إليها مختلفة عن الخزينة المصدر');
+        showWarning('بيانات غير مكتملة', 'يرجى اختيار خزينة محول إليها مختلفة عن الخزينة المصدر');
         return;
       }
       if (!currentAccount || currentAccount.balance < numAmount) {
-        alert(`رصيد الخزينة المحول منها (${currentAccount?.name}) غير كافٍ لإتمام التحويل. الرصيد الحالي: ${currentAccount?.balance.toLocaleString()} ج.م`);
+        showWarning('رصيد غير كافٍ', `رصيد الخزينة المحول منها (${currentAccount?.name}) غير كافٍ لإتمام التحويل. الرصيد الحالي: ${currentAccount?.balance.toLocaleString()} ج.م`);
         return;
       }
 
@@ -351,16 +385,17 @@ export const TreasuryAndExpensesView: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
+        showToast(data.message || 'تمت العملية وتحديث الأرصدة بنجاح!');
         setFeedback({ type: 'success', message: data.message || 'تمت العملية وتحديث الأرصدة بنجاح!' });
         fetchData();
         setTimeout(() => {
           closeModal();
         }, 1200);
       } else {
-        alert(data.message || 'فشل إتمام العملية');
+        showError('فشل العملية', data.message || 'فشل إتمام العملية المالية');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال', err.message);
     }
   };
 
@@ -645,6 +680,57 @@ export const TreasuryAndExpensesView: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* اختيار تصنيف المصروف عند صرف مصروف */}
+              {activeModal === 'EXPENSE' && (
+                <div className="space-y-2 bg-slate-100/70 dark:bg-slate-950/70 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                      <span>تصنيف المصروف: <span className="text-rose-500">*</span></span>
+                    </span>
+                    <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-normal">يساعدك في التقارير المحاسبية</span>
+                  </label>
+                  
+                  <SearchableSelect
+                    required
+                    value={isCustomCategory ? '__CUSTOM__' : expenseCategory}
+                    onChange={(e) => {
+                      if (e.target.value === '__CUSTOM__') {
+                        setIsCustomCategory(true);
+                      } else {
+                        setIsCustomCategory(false);
+                        setExpenseCategory(e.target.value);
+                      }
+                    }}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-bold"
+                  >
+                    {expenseCategories.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                    <option value="__CUSTOM__">➕ إضافة تصنيف آخر (مخصص)...</option>
+                  </SearchableSelect>
+
+                  {isCustomCategory && (
+                    <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 animate-fadeIn">
+                      <label className="block text-[11px] font-bold text-cyan-600 dark:text-cyan-400 mb-1">
+                        اكتب اسم التصنيف الجديد: <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        placeholder="مثال: وقود وبنزين، تراخيص، صيانة سيارة..."
+                        value={customCategory}
+                        onChange={(e) => setCustomCategory(e.target.value)}
+                        className="w-full bg-white dark:bg-slate-900 border border-cyan-500 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-cyan-500 font-bold"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 2. في حالة النقل: اختيار الخزينة المحول إليها */}
               {activeModal === 'TRANSFER' && (

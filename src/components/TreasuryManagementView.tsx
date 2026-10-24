@@ -28,6 +28,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import SearchableSelect from './SearchableSelect';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 export interface TreasuryAccount {
   id: string;
@@ -157,7 +158,7 @@ export const TreasuryManagementView: React.FC = () => {
   const handleSaveAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('يرجى إدخال اسم الخزينة أو الحساب المالي');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم الخزينة أو الحساب المالي');
       return;
     }
 
@@ -185,35 +186,45 @@ export const TreasuryManagementView: React.FC = () => {
           balance: 0,
           notes: ''
         });
+        showToast(editingAccount ? 'تم تحديث بيانات الخزينة بنجاح' : 'تمت إضافة الخزينة بنجاح');
         fetchAccounts();
       } else {
-        alert(data.message || 'فشل حفظ بيانات الخزينة');
+        showError('فشل الحفظ', data.message || 'فشل حفظ بيانات الخزينة');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال', err.message);
     }
   };
 
   // Delete Account
   const handleDeleteAccount = async (acc: TreasuryAccount) => {
     if (Math.abs(acc.balance) > 0) {
-      alert(`لا يمكن حذف الخزينة (${acc.name}) لوجود رصيد مالي متبقي بها (${acc.balance.toLocaleString()} ج.م). يرجى تصفية أو تحويل الرصيد أولاً.`);
+      showWarning(
+        'لا يمكن حذف الخزينة',
+        `لا يمكن حذف الخزينة (${acc.name}) لوجود رصيد مالي متبقي بها (${acc.balance.toLocaleString()} ج.م). يرجى تصفية أو تحويل الرصيد أولاً.`
+      );
       return;
     }
 
-    if (!window.confirm(`هل أنت متأكد من حذف الحساب / الخزينة: "${acc.name}"؟`)) return;
+    const confirmed = await showConfirm(
+      'تأكيد حذف الخزينة',
+      `هل أنت متأكد من حذف الحساب / الخزينة: "${acc.name}" نهائياً من النظام؟`,
+      { isDanger: true, confirmText: 'نعم، حذف الخزينة', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/accounts/${acc.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
+        showToast('تم حذف الخزينة بنجاح');
         fetchAccounts();
       } else {
-        alert(data.message || 'فشل حذف الخزينة');
+        showError('فشل الحذف', data.message || 'فشل حذف الخزينة');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('فشل حذف الخزينة');
+      showError('خطأ أثناء الحذف', err.message);
     }
   };
 

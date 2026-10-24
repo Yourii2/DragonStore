@@ -10,7 +10,6 @@ echo ===========================================================================
 echo.
 echo Stopping Dragon Store server processes...
 
-:: Find and kill process running on port 3000
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING') do (
     set PID=%%a
     if defined PID (
@@ -22,10 +21,8 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING') 
     )
 )
 
-:: Terminate any lingering tsx / vite processes for this project
 taskkill /F /FI "WINDOWTITLE eq DragonStore Backend Engine*" >nul 2>nul
 
-:: Verify port 3000 status
 netstat -ano | findstr :3000 | findstr LISTENING >nul 2>nul
 if %errorlevel% neq 0 (
     echo.

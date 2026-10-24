@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 import SearchableSelect from './SearchableSelect';
+import { showSuccess, showError } from '../utils/swal';
 
 const FOOTER_EXAMPLES = [
   'شكراً لتعاملكم معنا - نسعد دائماً بخدمتكم ورضاكم غايتنا.',
@@ -56,10 +57,10 @@ export const CompanySettingsView: React.FC = () => {
       if (data.success && data.data) {
         setFormData({
           logo: data.data.logo || '',
-          company_name: data.data.company_name || 'دراجون للأنظمة الأمنية',
-          phones: data.data.phones || '01050016289',
-          address: data.data.address || 'القاهرة - المقر الرئيسي',
-          invoice_footer: data.data.invoice_footer || 'شكراً لتعاملكم معنا',
+          company_name: data.data.company_name || '',
+          phones: data.data.phones || '',
+          address: data.data.address || '',
+          invoice_footer: data.data.invoice_footer || '',
           tax_number: data.data.tax_number || '',
           commercial_record: data.data.commercial_record || '',
           vat_rate: Number(data.data.vat_rate !== undefined ? data.data.vat_rate : 14),
@@ -116,12 +117,13 @@ export const CompanySettingsView: React.FC = () => {
             show_software_features: formData.show_software_features
           }
         }));
+        showSuccess('تم الحفظ بنجاح', 'تم حفظ وتحديث بيانات وإعدادات الشركة في قاعدة البيانات بنجاح!');
         setTimeout(() => setSuccessMessage(false), 3000);
       } else {
-        alert(data.message || 'فشل حفظ الإعدادات');
+        showError('فشل الحفظ', data.message || 'فشل حفظ الإعدادات');
       }
     } catch (err: any) {
-      alert('خطأ أثناء الحفظ: ' + err.message);
+      showError('خطأ أثناء الحفظ', err.message);
     } finally {
       setSaving(false);
     }

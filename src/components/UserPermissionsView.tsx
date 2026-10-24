@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { CurrentUser, PagePermission, FinancialPermissions, systemAuthStore } from '../store/systemAuthStore';
 import SearchableSelect from './SearchableSelect';
+import { showSuccess, showError, showToast } from '../utils/swal';
 
 // User record from API
 interface UserItem {
@@ -641,12 +642,13 @@ export const UserPermissionsView: React.FC = () => {
           };
           systemAuthStore.login(updatedCurrentUser, true);
         }
+        showSuccess('تم حفظ الصلاحيات', 'تم حفظ وتحديث صلاحيات المستخدم بنجاح');
       } else {
-        alert('حدث خطأ أثناء حفظ الصلاحيات: ' + (data.message || 'فشل'));
+        showError('فشل الحفظ', data.message || 'حدث خطأ أثناء حفظ الصلاحيات');
       }
     } catch (err: any) {
       console.error(err);
-      alert('فشل الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     } finally {
       setSaving(false);
     }

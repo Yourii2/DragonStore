@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { systemAuthStore } from '../store/systemAuthStore';
 import { compressImageFile } from '../utils/imageCompressor';
+import { showWarning, showError, showSuccess } from '../utils/swal';
 
 interface InstallationWizardProps {
   onComplete: () => void;
@@ -47,7 +48,7 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
   const [dbConfig, setDbConfig] = useState({
     host: 'localhost',
     port: 3306,
-    database: 'dragon_erp_production',
+    database: '',
     username: 'root',
     password: ''
   });
@@ -64,13 +65,13 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
     company_name: '',
     address: '',
     phones: '',
-    invoice_footer: 'شكراً لتعاملكم معنا - البضاعة المباعة ترد وتستبدل خلال 14 يوماً وفق الشروط والأحكام'
+    invoice_footer: ''
   });
 
   // STEP 3: Warehouse & Treasury State
   const [defaultsConfig, setDefaultsConfig] = useState({
-    warehouseName: 'المخزن الرئيسي',
-    treasuryName: 'الخزينة الرئيسية',
+    warehouseName: '',
+    treasuryName: '',
     openingBalance: '0'
   });
 
@@ -109,7 +110,7 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
   };
 
   // Test Database Connection
-  const handleTestDatabase = async () => {
+  const handleTestDatabase = async (): Promise<boolean> => {
     setTestingDb(true);
     setDbStatus(null);
     try {
@@ -120,12 +121,15 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
       });
       const data = await res.json();
       if (data.success) {
-        setDbStatus({ type: 'success', text: 'تم اختبار الاتصال بقاعدة البيانات بنجاح ومطابقة المعايير!' });
+        setDbStatus({ type: 'success', text: data.message || 'تم اختبار الاتصال بقاعدة البيانات بنجاح ومطابقة المعايير!' });
+        return true;
       } else {
         setDbStatus({ type: 'error', text: data.message || 'تعذر الاتصال بقاعدة البيانات' });
+        return false;
       }
     } catch (err: any) {
       setDbStatus({ type: 'error', text: 'خطأ بالخادم: ' + err.message });
+      return false;
     } finally {
       setTestingDb(false);
     }
@@ -182,7 +186,8 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
   // Step 1 Validation & Proceed
   const proceedStep1 = async () => {
     if (!dbStatus || dbStatus.type !== 'success') {
-      await handleTestDatabase();
+      const ok = await handleTestDatabase();
+      if (!ok) return;
     }
     setCurrentStep(2);
   };
@@ -190,7 +195,7 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
   // Step 2 Validation & Proceed
   const proceedStep2 = () => {
     if (!companyConfig.company_name.trim()) {
-      alert('يرجى كتابة اسم الشركة أو المنشأة');
+      showWarning('بيانات غير مكتملة', 'يرجى كتابة اسم الشركة أو المنشأة للمتابعة');
       return;
     }
     setCurrentStep(3);
@@ -199,11 +204,11 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
   // Step 3 Validation & Proceed
   const proceedStep3 = () => {
     if (!defaultsConfig.warehouseName.trim()) {
-      alert('يرجى تحديد اسم المخزن الافتراضي');
+      showWarning('بيانات غير مكتملة', 'يرجى تحديد اسم المخزن الافتراضي للمتابعة');
       return;
     }
     if (!defaultsConfig.treasuryName.trim()) {
-      alert('يرجى تحديد اسم الخزينة الافتراضية');
+      showWarning('بيانات غير مكتملة', 'يرجى تحديد اسم الخزينة الافتراضية للمتابعة');
       return;
     }
     setCurrentStep(4);
@@ -212,19 +217,19 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
   // Step 4 Validation & Proceed
   const proceedStep4 = () => {
     if (!adminData.fullName.trim()) {
-      alert('يرجى إدخال الاسم الكامل للمدير');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال الاسم الكامل للمدير');
       return;
     }
     if (!adminData.username.trim()) {
-      alert('يرجى إدخال اسم المستخدم');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم المستخدم');
       return;
     }
     if (!adminData.password) {
-      alert('يرجى إدخال كلمة المرور');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال كلمة المرور');
       return;
     }
     if (adminData.password !== adminData.confirmPassword) {
-      alert('كلمة المرور وتأكيد كلمة المرور غير متطابقين');
+      showWarning('خطأ في كلمة المرور', 'كلمة المرور وتأكيد كلمة المرور غير متطابقين');
       return;
     }
     setCurrentStep(5);
@@ -407,7 +412,7 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
                     value={dbConfig.database}
                     onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-                    placeholder="dragon_erp_production"
+                    placeholder="اكتب اسم قاعدة البيانات (مثال: my_store_db)"
                   />
                 </div>
 

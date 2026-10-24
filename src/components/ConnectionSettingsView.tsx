@@ -15,6 +15,7 @@ import {
   FileCode,
   HardDrive
 } from 'lucide-react';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 export const ConnectionSettingsView: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -108,11 +109,17 @@ export const ConnectionSettingsView: React.FC = () => {
   };
 
   // Import DB Backup
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!window.confirm('تحذير هام: استيراد نسخة قاعدة البيانات سيقوم بتحديث واستبدال السجلات الموجودة بالنسخة المستوردة. هل أنت متأكد من الاستمرار؟')) {
+    const confirmed = await showConfirm(
+      'تحذير استيراد نسخة قاعدة البيانات',
+      'تحذير هام: استيراد نسخة قاعدة البيانات سيقوم بتحديث واستبدال السجلات الموجودة بالنسخة المستوردة. هل أنت متأكد من الاستمرار؟',
+      { isDanger: true, confirmText: 'نعم، استيراد واستبدال', cancelText: 'إلغاء' }
+    );
+
+    if (!confirmed) {
       e.target.value = '';
       return;
     }
@@ -133,11 +140,14 @@ export const ConnectionSettingsView: React.FC = () => {
         });
         const data = await res.json();
         if (data.success) {
+          showSuccess('تم الاستيراد بنجاح', data.message || 'تمت استعادة قاعدة البيانات وتحديث السجلات بنجاح');
           setImportMessage({ type: 'success', text: data.message });
         } else {
+          showError('فشل الاستيراد', data.message || 'فشل استيراد النسخة');
           setImportMessage({ type: 'error', text: data.message || 'فشل استيراد النسخة' });
         }
       } catch (err: any) {
+        showError('خطأ بالملف', err.message);
         setImportMessage({ type: 'error', text: 'ملف غير صالح أو خطأ بالاستيراد: ' + err.message });
       } finally {
         setImporting(false);

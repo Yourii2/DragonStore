@@ -72,19 +72,25 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
   // Dropdown options
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
 
   // Fetch initial dropdown metadata
   useEffect(() => {
     const fetchMeta = async () => {
       try {
-        const [whRes, catRes] = await Promise.all([
+        const [whRes, catRes, expCatRes] = await Promise.all([
           fetch('/api/warehouses'),
-          fetch('/api/categories')
+          fetch('/api/categories'),
+          fetch('/api/expenses/categories')
         ]);
         const whData = await whRes.json();
         const catData = await catRes.json();
+        const expCatData = await expCatRes.json();
         if (whData.success) setWarehouses(whData.warehouses || []);
         if (catData.success) setCategories(catData.categories || []);
+        if (expCatData.success && Array.isArray(expCatData.categories)) {
+          setExpenseCategories(expCatData.categories);
+        }
       } catch (e) {
         console.error('Failed to load filter metadata', e);
       }
@@ -294,22 +300,28 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
             </div>
           )}
 
-          {/* Category Filter */}
-          {activeReport === 'inventory' && (
+          {/* Category Filter for Inventory & Expenses */}
+          {(activeReport === 'inventory' || activeReport === 'expenses') && (
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1">
                 <Layers className="w-3 h-3 text-cyan-500" />
-                <span>التصنيف:</span>
+                <span>{activeReport === 'expenses' ? 'تصنيف المصروف:' : 'التصنيف:'}</span>
               </label>
               <SearchableSelect
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none font-bold"
               >
-                <option value="all">كافة التصنيفات</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
+                <option value="all">{activeReport === 'expenses' ? 'كل التصنيفات (عرض شامل)' : 'كافة التصنيفات'}</option>
+                {activeReport === 'expenses' ? (
+                  expenseCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))
+                ) : (
+                  categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))
+                )}
               </SearchableSelect>
             </div>
           )}
@@ -845,60 +857,226 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
 
           {/* 6. EXPENSES REPORT VIEW */}
           {activeReport === 'expenses' && (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:grid-cols-3">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                  <span className="text-[11px] text-slate-400 font-bold block mb-1">إجمالي المصروفات التشغيلية</span>
+            <div className="space-y-6">
+              {/* Filter Notice Banner if category filtered */}
+              {categoryFilter !== 'all' && (
+                <div className="bg-cyan-950/40 border border-cyan-800/60 rounded-2xl p-3.5 flex items-center justify-between animate-fadeIn">
+                  <div className="flex items-center gap-2.5 text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                    <span className="text-slate-300">يتم الآن عرض مصروفات تصنيف:</span>
+                    <span className="font-bold text-cyan-300 bg-cyan-900/50 px-2.5 py-0.5 rounded-lg border border-cyan-700/50">
+                      {categoryFilter}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setCategoryFilter('all')}
+                    className="text-xs text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 px-3 py-1 rounded-xl transition-all cursor-pointer font-bold border border-slate-700"
+                  >
+                    عرض كل التصنيفات
+                  </button>
+                </div>
+              )}
+
+              {/* Main Summary KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm hover:border-slate-700 transition-colors">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-slate-400 font-bold">إجمالي المصروفات</span>
+                    <div className="w-6 h-6 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                      <TrendingDown className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
                   <div className="text-xl font-black text-rose-400 font-mono">
-                    {Number(reportData.totals.totalAmount).toLocaleString()} <span className="text-xs">ج.م</span>
+                    {Number(reportData.totals.totalAmount).toLocaleString()} <span className="text-xs font-sans">ج.م</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-bold mt-1 block">عدد البنود: {reportData.totals.count}</span>
+                  <span className="text-[10px] text-slate-500 font-bold mt-1 block">
+                    إجمالي عدد السندات والعمليات: {reportData.totals.count}
+                  </span>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                  <span className="text-[11px] text-slate-400 font-bold block mb-1">حصة المتجر والأنظمة الأمنية (BU 1)</span>
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm hover:border-slate-700 transition-colors">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-slate-400 font-bold">أعلى تصنيف إنفاقاً</span>
+                    <div className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                      <Layers className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="text-sm font-black text-amber-300 truncate font-sans" title={reportData.topCategory?.category || '—'}>
+                    {reportData.topCategory?.category || '—'}
+                  </div>
+                  <div className="text-xs font-mono font-bold text-slate-400 mt-0.5">
+                    {reportData.topCategory ? `${Number(reportData.topCategory.total).toLocaleString()} ج.م (${reportData.topCategory.percentage}%)` : '—'}
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm hover:border-slate-700 transition-colors">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-slate-400 font-bold">متوسط العملية الواحدة</span>
+                    <div className="w-6 h-6 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+                      <DollarSign className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
                   <div className="text-xl font-black text-cyan-400 font-mono">
-                    {Number(reportData.totals.shopPortion).toLocaleString()} <span className="text-xs">ج.م</span>
+                    {Number(reportData.averageExpense || 0).toLocaleString()} <span className="text-xs font-sans">ج.م</span>
                   </div>
-                  <span className="text-[10px] text-cyan-500 font-bold mt-1 block">مصروفات مباشرة ومشتركة</span>
+                  <span className="text-[10px] text-slate-500 font-bold mt-1 block">
+                    متوسط الصرف لكل بند
+                  </span>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                  <span className="text-[11px] text-slate-400 font-bold block mb-1">حصة البرمجيات الحرة (BU 2)</span>
-                  <div className="text-xl font-black text-purple-400 font-mono">
-                    {Number(reportData.totals.freelancePortion).toLocaleString()} <span className="text-xs">ج.م</span>
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm hover:border-slate-700 transition-colors">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-slate-400 font-bold">عدد التصنيفات النشطة</span>
+                    <div className="w-6 h-6 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                      <PieChart className="w-3.5 h-3.5" />
+                    </div>
                   </div>
-                  <span className="text-[10px] text-purple-500 font-bold mt-1 block">مصروفات التطوير والسيرفرات</span>
+                  <div className="text-xl font-black text-purple-400 font-mono">
+                    {reportData.categoryBreakdown?.length || 0} <span className="text-xs font-sans">تصنيف</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold mt-1 block">
+                    تم الصرف عليها في هذه الفترة
+                  </span>
                 </div>
               </div>
 
-              {/* Expenses Table */}
+              {/* Category Breakdown Interactive Grid */}
+              {reportData.categoryBreakdown && reportData.categoryBreakdown.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-cyan-400" />
+                      <h4 className="text-xs font-bold text-slate-200">تحليل وتوزيع المصروفات حسب التصنيف (انقر للتصفية السريعة):</h4>
+                    </div>
+                    {categoryFilter !== 'all' && (
+                      <span className="text-[10px] text-cyan-400 font-bold">انقر على أي تصنيف لفلترة التقرير فوراً</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {reportData.categoryBreakdown.map((catItem: any) => {
+                      const isSelected = categoryFilter === catItem.category;
+                      return (
+                        <div
+                          key={catItem.category}
+                          onClick={() => setCategoryFilter(isSelected ? 'all' : catItem.category)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer relative overflow-hidden group ${
+                            isSelected 
+                              ? 'bg-cyan-950/40 border-cyan-500 shadow-md shadow-cyan-900/20' 
+                              : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-800/30'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-1.5">
+                            <span className="text-xs font-bold text-slate-200 truncate pr-1" title={catItem.category}>
+                              {catItem.category}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                              {catItem.count} حركة
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between mb-2">
+                            <span className="text-sm font-black font-mono text-rose-400">
+                              {Number(catItem.total).toLocaleString()} <span className="text-[10px] font-sans">ج.م</span>
+                            </span>
+                            <span className="text-xs font-mono font-bold text-cyan-400">
+                              {catItem.percentage}%
+                            </span>
+                          </div>
+
+                          {/* Progress percentage bar */}
+                          <div className="w-full bg-slate-800/80 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                isSelected ? 'bg-cyan-400' : 'bg-gradient-to-r from-cyan-500 to-rose-500'
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(3, catItem.percentage))}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Detailed Expenses Table */}
               <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div className="p-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-cyan-400" />
+                    <h4 className="text-xs font-bold text-slate-200">سجل وحركات بنود المصروفات</h4>
+                    <span className="text-[10px] text-slate-500 font-mono">({filteredRows.length} بند مسجل)</span>
+                  </div>
+                  <div className="text-xs font-bold text-slate-400">
+                    إجمالي الجدول المعروض: <span className="font-mono text-rose-400 font-black">{filteredRows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0).toLocaleString()} ج.م</span>
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-right text-xs">
                     <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 font-mono">
                       <tr>
-                        <th className="py-3 px-4">بند المصروف</th>
                         <th className="py-3 px-4">التاريخ</th>
+                        <th className="py-3 px-4">بند المصروف / البيان</th>
                         <th className="py-3 px-4">التصنيف</th>
-                        <th className="py-3 px-4">طريقة التوزيع</th>
-                        <th className="py-3 px-4 text-cyan-400">حصة المتجر</th>
-                        <th className="py-3 px-4 text-purple-400">حصة البرمجيات</th>
-                        <th className="py-3 px-4 text-rose-400">إجمالي المبلغ</th>
+                        <th className="py-3 px-4">الخزينة / الحساب المصروف منه</th>
+                        <th className="py-3 px-4 text-rose-400">المبلغ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 font-mono">
-                      {filteredRows.map((exp: any) => (
-                        <tr key={exp.id} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="py-2.5 px-4 font-sans font-bold text-slate-200">{exp.title}</td>
-                          <td className="py-2.5 px-4 text-slate-400">{exp.date}</td>
-                          <td className="py-2.5 px-4 text-slate-300">{exp.category}</td>
-                          <td className="py-2.5 px-4 text-slate-400">{exp.allocation_ratio || exp.type}</td>
-                          <td className="py-2.5 px-4 text-cyan-400">{Number(exp.shop_portion).toLocaleString()} ج.م</td>
-                          <td className="py-2.5 px-4 text-purple-400">{Number(exp.freelance_portion).toLocaleString()} ج.م</td>
-                          <td className="py-2.5 px-4 font-black text-rose-400">{Number(exp.amount).toLocaleString()} ج.م</td>
+                      {filteredRows.map((exp: any) => {
+                        const cat = exp.category || 'مصروفات عامة';
+                        let badgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
+                        if (cat.includes('كهرباء') || cat.includes('مياه') || cat.includes('مرافق')) {
+                          badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+                        } else if (cat.includes('إيجار') || cat.includes('مقر')) {
+                          badgeColor = 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30';
+                        } else if (cat.includes('ضيافة') || cat.includes('بوفيه') || cat.includes('نثريات')) {
+                          badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+                        } else if (cat.includes('صيانة') || cat.includes('قطع غيار') || cat.includes('معدات')) {
+                          badgeColor = 'bg-orange-500/10 text-orange-400 border-orange-500/30';
+                        } else if (cat.includes('نقل') || cat.includes('شحن') || cat.includes('مواصلات')) {
+                          badgeColor = 'bg-sky-500/10 text-sky-400 border-sky-500/30';
+                        } else if (cat.includes('دعاية') || cat.includes('تسويق') || cat.includes('إعلان')) {
+                          badgeColor = 'bg-pink-500/10 text-pink-400 border-pink-500/30';
+                        } else if (cat.includes('برمج') || cat.includes('سيرفر') || cat.includes('اشتراك')) {
+                          badgeColor = 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+                        }
+
+                        return (
+                          <tr key={exp.id} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="py-2.5 px-4 text-slate-400">{exp.date}</td>
+                            <td className="py-2.5 px-4 font-sans font-bold text-slate-200">
+                              {exp.title}
+                            </td>
+                            <td className="py-2.5 px-4">
+                              <span 
+                                onClick={() => setCategoryFilter(cat)}
+                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-sans font-bold border cursor-pointer hover:opacity-80 transition-opacity ${badgeColor}`}
+                                title="انقر لتصفية هذا التصنيف فقط"
+                              >
+                                {cat}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-slate-300 font-sans">
+                              {exp.payment_account || 'الخزينة الرئيسية'}
+                            </td>
+                            <td className="py-2.5 px-4 font-black text-rose-400 text-sm">
+                              {Number(exp.amount).toLocaleString()} <span className="text-[10px] font-sans">ج.م</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {filteredRows.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-12 text-center text-slate-500 font-sans">
+                            <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+                            لا توجد مصروفات مسجلة تطابق معايير البحث أو التصنيف المختار
+                          </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>

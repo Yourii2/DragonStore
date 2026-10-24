@@ -25,32 +25,31 @@ try {
   }
 
   const targetBat = path.resolve(path.join(projectRoot, 'Start.bat'));
-  const userProfile = process.env.USERPROFILE || 'C:\\Users\\' + (process.env.USERNAME || 'mamdo');
-  const desktopDir = path.join(userProfile, 'Desktop');
 
   console.log(`[INFO] Project Root Detected: ${projectRoot}`);
   console.log(`[INFO] Target Start Script: ${targetBat}`);
   console.log(`[INFO] Exact Icon File Resolved: ${resolvedIconPath}`);
 
-  const shortcutPath = path.join(desktopDir, 'Dragon Store.lnk');
-
-  // In VBScript strings, backslashes do not need double escaping
+  // In VBScript, oWS.SpecialFolders("Desktop") automatically resolves the real Desktop
+  // including OneDrive redirected desktops and localized language desktops.
   const vbsContent = [
     'Set oWS = CreateObject("WScript.Shell")',
-    `sLinkFile = "${shortcutPath.replace(/"/g, '""')}"`,
+    'sDesktop = oWS.SpecialFolders("Desktop")',
+    'sLinkFile = sDesktop & "\\Dragon Store.lnk"',
     'Set oLink = oWS.CreateShortcut(sLinkFile)',
     `oLink.TargetPath = "${targetBat.replace(/"/g, '""')}"`,
     `oLink.WorkingDirectory = "${projectRoot.replace(/"/g, '""')}"`,
     'oLink.Description = "Dragon Store for Electronics and Freelance Work - Dragon Security Systems"',
     `oLink.IconLocation = "${resolvedIconPath.replace(/"/g, '""')},0"`,
-    'oLink.Save'
+    'oLink.Save',
+    'WScript.Echo "[SUCCESS] Shortcut created at: " & sLinkFile'
   ].join('\r\n');
 
   const tempVbs = path.join(projectRoot, 'scripts', '_temp_shortcut.vbs');
   fs.writeFileSync(tempVbs, vbsContent, 'utf8');
 
-  execSync(`cscript //nologo "${tempVbs}"`, { encoding: 'utf8' });
-  console.log(`[SUCCESS] Desktop Shortcut created and verified: ${shortcutPath}`);
+  const output = execSync(`cscript //nologo "${tempVbs}"`, { encoding: 'utf8' });
+  console.log(output.trim());
 
   if (fs.existsSync(tempVbs)) {
     fs.unlinkSync(tempVbs);

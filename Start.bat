@@ -23,7 +23,6 @@ if %errorlevel% equ 0 (
 )
 
 echo [1/3] Checking MySQL Service...
-:: Test if MySQL is listening on port 3306
 netstat -ano | findstr :3306 >nul 2>nul
 if %errorlevel% neq 0 (
     echo [WARNING] MySQL service does not appear to be running on port 3306.
@@ -42,7 +41,6 @@ echo [2/3] Starting Dragon Store Application Server...
 echo Host URL: http://localhost:3000
 echo.
 
-:: Launch the Node.js development/production server in the background or new window
 start "DragonStore Backend Engine" cmd /k "cd /d "%SCRIPT_DIR%" && npm run dev"
 
 echo [3/3] Waiting for server to initialize...

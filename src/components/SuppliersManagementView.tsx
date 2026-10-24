@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 export interface SupplierItem {
   id: string;
@@ -138,7 +139,7 @@ export const SuppliersManagementView: React.FC = () => {
   const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.phone.trim()) {
-      alert('يرجى إدخال اسم المورد ورقم الهاتف');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم المورد ورقم الهاتف');
       return;
     }
 
@@ -163,35 +164,45 @@ export const SuppliersManagementView: React.FC = () => {
         setShowAddEditModal(false);
         setEditingSupplier(null);
         setFormData({ name: '', phone: '', address: '', balance: 0 });
+        showToast(editingSupplier ? 'تم تحديث بيانات المورد بنجاح' : 'تمت إضافة المورد بنجاح');
         fetchSuppliers();
       } else {
-        alert(data.message || 'فشل حفظ بيانات المورد');
+        showError('فشل الحفظ', data.message || 'فشل حفظ بيانات المورد');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال', err.message);
     }
   };
 
   // Delete Supplier
   const handleDeleteSupplier = async (sup: SupplierItem) => {
     if (Math.abs(sup.balance) > 0) {
-      alert(`لا يمكن حذف المورد (${sup.name}) لأن حسابه الحالي غير مصفى (الرصيد: ${sup.balance.toLocaleString()} ج.م). يجب تصفية الحساب أولاً.`);
+      showWarning(
+        'لا يمكن حذف المورد',
+        `لا يمكن حذف المورد (${sup.name}) لأن حسابه الحالي غير مصفى (الرصيد: ${sup.balance.toLocaleString()} ج.م). يجب تصفية الحساب أولاً.`
+      );
       return;
     }
 
-    if (!window.confirm(`هل أنت متأكد من حذف المورد: "${sup.name}"؟`)) return;
+    const confirmed = await showConfirm(
+      'تأكيد حذف المورد',
+      `هل أنت متأكد من رغبتك في حذف المورد: "${sup.name}" نهائياً من النظام؟`,
+      { isDanger: true, confirmText: 'نعم، حذف المورد', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/suppliers/${sup.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
+        showToast('تم حذف المورد بنجاح');
         fetchSuppliers();
       } else {
-        alert(data.message || 'فشل حذف المورد');
+        showError('فشل الحذف', data.message || 'فشل حذف المورد');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('فشل حذف المورد');
+      showError('خطأ أثناء الحذف', err.message);
     }
   };
 

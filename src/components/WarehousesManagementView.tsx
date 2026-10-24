@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 interface WarehouseRecord {
   id: string;
@@ -125,7 +126,7 @@ export const WarehousesManagementView: React.FC = () => {
   const handleSaveWarehouse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('يرجى إدخال اسم المخزن');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم المخزن');
       return;
     }
 
@@ -149,12 +150,13 @@ export const WarehousesManagementView: React.FC = () => {
         setShowAddEditModal(false);
         setEditingWarehouse(null);
         setFormData({ name: '' });
+        showToast(editingWarehouse ? 'تم تحديث بيانات المخزن بنجاح' : 'تمت إضافة المخزن بنجاح');
         await fetchWarehouses();
       } else {
-        alert(result.message || 'فشل حفظ المخزن');
+        showError('فشل الحفظ', result.message || 'فشل حفظ المخزن');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     }
   };
 
@@ -170,11 +172,19 @@ export const WarehousesManagementView: React.FC = () => {
   // Delete Warehouse (only if empty)
   const handleDeleteWarehouse = async (w: WarehouseRecord) => {
     if (w.products_count > 0 || w.total_pieces > 0) {
-      alert(`لا يمكن حذف المخزن (${w.name}) لأنه يحتوي على ${w.products_count} أصناف بعدد ${w.total_pieces} قطعة. يجب تفريغ المخزن أولاً.`);
+      showWarning(
+        'لا يمكن حذف المخزن',
+        `لا يمكن حذف المخزن (${w.name}) لأنه يحتوي على ${w.products_count} أصناف بعدد ${w.total_pieces} قطعة. يجب تفريغ المخزن أولاً.`
+      );
       return;
     }
 
-    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف المخزن (${w.name})؟`)) {
+    const confirmed = await showConfirm(
+      'تأكيد حذف المخزن',
+      `هل أنت متأكد من رغبتك في حذف المخزن (${w.name}) نهائياً؟`,
+      { isDanger: true, confirmText: 'نعم، حذف المخزن', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) {
       return;
     }
 
@@ -182,12 +192,13 @@ export const WarehousesManagementView: React.FC = () => {
       const res = await fetch(`/api/warehouses/${w.id}`, { method: 'DELETE' });
       const result = await res.json();
       if (result.success) {
+        showToast('تم حذف المخزن بنجاح');
         await fetchWarehouses();
       } else {
-        alert(result.message || 'فشل حذف المخزن');
+        showError('فشل الحذف', result.message || 'فشل حذف المخزن');
       }
     } catch (err: any) {
-      alert('خطأ أثناء الحذف: ' + err.message);
+      showError('خطأ أثناء الحذف', err.message);
     }
   };
 

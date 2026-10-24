@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   FileCheck
 } from 'lucide-react';
+import { showSuccess, showError, showWarning, showConfirm, showPrompt } from '../utils/swal';
 
 interface UpdateSettingsViewProps {
   onFactoryReset?: () => void;
@@ -98,19 +99,20 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
 
   // 1. Zero Counters Handler
   const handleZeroCounters = async () => {
-    const confirmFirst = window.confirm(
-      'تحذير أمني شديد الأهمية:\n\nهل أنت متأكد من رغبتك في تصفير جميع العدادات والمعاملات؟\n\n' +
-      '• سيتم أخذ نسخة احتياطية كاملة وتنزيلها تلقائياً قبل البدء.\n' +
-      '• سيتم حذف جميع فواتير المبيعات وحركات المخزون والمصروفات والقيود.\n' +
-      '• سيتم تصفير أرصدة العملاء والموردين والخزائن.\n' +
-      '• سيتم تصفير كميات المنتجات مع الحفاظ على أسمائها وبياناتها والمخازن والتصنيفات.\n' +
-      '• سيتم الحفاظ على الموظفين ورواتبهم مع تصفير مسحوباتهم.'
+    const confirmFirst = await showConfirm(
+      'تحذير أمني شديد الأهمية',
+      'هل أنت متأكد من تصفير جميع العدادات والمعاملات؟ سيتم أخذ نسخة احتياطية كاملة وتنزيلها تلقائياً، وتصفير المبيعات والأرصدة والكميات مع الحفاظ على البيانات الأساسية.',
+      { isDanger: true, confirmText: 'متابعة التصفير', cancelText: 'إلغاء' }
     );
     if (!confirmFirst) return;
 
-    const confirmSecond = window.prompt('للتأكيد النهائي، اكتب كلمة "تصفير" للمتابعة:');
+    const confirmSecond = await showPrompt(
+      'تأكيد نهائي لعملية التصفير',
+      'للتأكيد النهائي، يرجى كتابة كلمة "تصفير" في المربع أدناه للمتابعة:',
+      { inputPlaceholder: 'تصفير', confirmText: 'تأكيد التصفير', cancelText: 'تراجع' }
+    );
     if (confirmSecond !== 'تصفير') {
-      alert('تم إلغاء عملية التصفير.');
+      showWarning('تم الإلغاء', 'تم إلغاء عملية التصفير.');
       return;
     }
 
@@ -131,7 +133,7 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
           message: data.message || 'تم تصفير جميع العدادات وتصفير الأرصدة والكميات بنجاح مع حفظ نسخة احتياطية.',
           backupFile: data.backupFile
         });
-        alert('تم تصفير جميع العدادات والكميات بنجاح!\nتم حفظ نسخة احتياطية وتنزيلها تلقائياً على جهازك.');
+        showSuccess('تم التصفير بنجاح', 'تم تصفير جميع العدادات والكميات بنجاح وتم حفظ نسخة احتياطية وتنزيلها تلقائياً على جهازك.');
       } else {
         throw new Error(data.error || 'فشلت عملية التصفير');
       }
@@ -140,7 +142,7 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
         type: 'error',
         message: 'حدث خطأ أثناء تصفير العدادات: ' + err.message
       });
-      alert('خطأ: ' + err.message);
+      showError('خطأ أثناء التصفير', err.message);
     } finally {
       setActionLoading(null);
     }
@@ -148,17 +150,20 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
 
   // 2. Factory Reset Handler
   const handleFactoryReset = async () => {
-    const confirmFirst = window.confirm(
-      'تحذير خطير جداً:\n\nهل أنت متأكد تماماً من رغبتك في إعادة ضبط المصنع؟\n\n' +
-      '• سيتم أخذ نسخة احتياطية كاملة وتنزيلها تلقائياً فوراً.\n' +
-      '• سيتم إرجاع النظام كأنه لم يثبت بعد لتشغيل معالج التثبيت من جديد.\n' +
-      '• يمكنك استرجاع نسختك الاحتياطية في أي وقت من خلال مرحلة قاعدة البيانات في معالج التثبيت.'
+    const confirmFirst = await showConfirm(
+      'تحذير خطير جداً: إعادة ضبط المصنع',
+      'هل أنت متأكد تماماً من رغبتك في إعادة ضبط المصنع؟ سيتم أخذ نسخة احتياطية كاملة وتنزيلها فوراً، وإرجاع النظام لحالة ما قبل التثبيت لتشغيل المعالج مجدداً.',
+      { isDanger: true, confirmText: 'متابعة ضبط المصنع', cancelText: 'إلغاء' }
     );
     if (!confirmFirst) return;
 
-    const confirmSecond = window.prompt('للتأكيد النهائي الصارم، اكتب "ضبط المصنع" للمتابعة:');
+    const confirmSecond = await showPrompt(
+      'تأكيد نهائي صارم',
+      'للتأكيد النهائي الصارم، اكتب "ضبط المصنع" في المربع أدناه:',
+      { inputPlaceholder: 'ضبط المصنع', confirmText: 'تنفيذ ضبط المصنع', cancelText: 'تراجع' }
+    );
     if (confirmSecond !== 'ضبط المصنع') {
-      alert('تم إلغاء عملية ضبط المصنع.');
+      showWarning('تم الإلغاء', 'تم إلغاء عملية ضبط المصنع.');
       return;
     }
 
@@ -174,7 +179,7 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
         if (data.backup) {
           triggerBackupDownload(data.backup, 'factory_reset_auto');
         }
-        alert('تمت إعادة ضبط المصنع بنجاح وتم حفظ نسخة احتياطية كاملة!\nجاري تحويلك الآن إلى معالج التثبيت...');
+        await showSuccess('تمت إعادة ضبط المصنع بنجاح', 'تم حفظ نسخة احتياطية كاملة! جاري تحويلك الآن إلى معالج التثبيت...');
         if (onFactoryReset) {
           onFactoryReset();
         } else {
@@ -188,7 +193,7 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
         type: 'error',
         message: 'حدث خطأ أثناء إعادة ضبط المصنع: ' + err.message
       });
-      alert('خطأ: ' + err.message);
+      showError('خطأ أثناء إعادة الضبط', err.message);
       setActionLoading(null);
     }
   };

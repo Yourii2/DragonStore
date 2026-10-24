@@ -6,10 +6,12 @@
  * 3. Excel (.xls / CSV) formatted download with Arabic UTF-8 BOM
  */
 
+import { showWarning } from './swal';
+
 export function printTableOrReceipt(title: string, htmlContent: string) {
   const printWindow = window.open('', '_blank', 'width=900,height=700');
   if (!printWindow) {
-    alert('يرجى السماح بالنوافذ المنبثقة للطباعة');
+    showWarning('النوافذ المنبثقة محجوبة', 'يرجى السماح بالنوافذ المنبثقة من إعدادات المتصفح لطباعة المستند');
     return;
   }
 
@@ -103,12 +105,9 @@ export function printTableOrReceipt(title: string, htmlContent: string) {
 <body>
   <div class="header">
     <div>
-      <h1 class="company-title">شركه دراجون للأنظمه الامنيه</h1>
-      <div class="subtitle">متجر دراجون للاليكترونيات و الاعمال الحره • م . ممدوح المصرى</div>
+      <h1 class="company-title">${title}</h1>
     </div>
     <div class="contacts" dir="ltr">
-      <div>Tel: 01150006289</div>
-      <div>Tel: 01050016289</div>
       <div>Date: ${new Date().toLocaleDateString('ar-EG')}</div>
     </div>
   </div>

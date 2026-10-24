@@ -44,6 +44,7 @@ import { UserPermissionsView } from './components/UserPermissionsView';
 import { MinimalDashboardView } from './components/MinimalDashboardView';
 import { systemAuthStore, CurrentUser, hasPermission } from './store/systemAuthStore';
 import { Database, Zap, Lock } from 'lucide-react';
+import { showConfirm } from './utils/swal';
 
 export default function App() {
   const [isInstalled, setIsInstalled] = useState<boolean>(systemAuthStore.installationState.isInstalled);
@@ -109,8 +110,13 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  const handleReinstall = () => {
-    if (window.confirm('هل أنت متأكد من رغبتك في إعادة تشغيل معالج التثبيت من البداية؟')) {
+  const handleReinstall = async () => {
+    const confirmed = await showConfirm(
+      'إعادة تشغيل معالج التثبيت',
+      'هل أنت متأكد من رغبتك في إعادة تشغيل معالج التثبيت من البداية؟',
+      { isDanger: true, confirmText: 'نعم، إعادة التثبيت', cancelText: 'تراجع' }
+    );
+    if (confirmed) {
       systemAuthStore.resetInstallation();
       setIsInstalled(false);
       setCurrentUser(null);

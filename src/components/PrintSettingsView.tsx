@@ -35,6 +35,7 @@ import {
   TrendingUp,
   Coins
 } from 'lucide-react';
+import { showSuccess, showError, showWarning, showConfirm } from '../utils/swal';
 
 export type PaperSize = 'thermal80' | 'a5' | 'a4';
 export type LayoutPreset = 'modern' | 'classic' | 'minimal';
@@ -170,11 +171,11 @@ export const PrintSettingsView: React.FC = () => {
 
   // Active company profile
   const [companyProfile, setCompanyProfile] = useState({
-    name: 'دراجون للأنظمه الامنيه',
-    phones: '01050016289',
-    address: 'القاهرة - المقر الرئيسي',
-    tax_number: 'TR-892019',
-    commercial_record: 'CR-104829',
+    name: '',
+    phones: '',
+    address: '',
+    tax_number: '',
+    commercial_record: '',
     logo: ''
   });
 
@@ -205,11 +206,11 @@ export const PrintSettingsView: React.FC = () => {
 
         if (compRes?.success && compRes.data) {
           setCompanyProfile({
-            name: compRes.data.company_name || 'دراجون للأنظمه الامنيه',
-            phones: compRes.data.phones || '01050016289',
-            address: compRes.data.address || 'القاهرة - المقر الرئيسي',
-            tax_number: compRes.data.tax_number || 'TR-892019',
-            commercial_record: compRes.data.commercial_record || 'CR-104829',
+            name: compRes.data.company_name || '',
+            phones: compRes.data.phones || '',
+            address: compRes.data.address || '',
+            tax_number: compRes.data.tax_number || '',
+            commercial_record: compRes.data.commercial_record || '',
             logo: compRes.data.logo || ''
           });
         }
@@ -285,25 +286,34 @@ export const PrintSettingsView: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
+        showSuccess('تم الحفظ بنجاح', 'تم حفظ وتحديث قوالب الطباعة في قاعدة البيانات');
         setSuccessMessage(true);
         setTimeout(() => setSuccessMessage(false), 3000);
+      } else {
+        showError('فشل الحفظ', data.message || 'تعذر حفظ قوالب الطباعة');
       }
     } catch (err: any) {
-      alert('خطأ أثناء حفظ التعديلات: ' + err.message);
+      showError('خطأ أثناء حفظ التعديلات', err.message);
     } finally {
       setSaving(false);
     }
   };
 
   // Reset to default
-  const handleResetCurrent = () => {
+  const handleResetCurrent = async () => {
     const catalogItem = DOCUMENT_CATALOG.find(d => d.id === selectedDocId);
     if (!catalogItem) return;
-    if (window.confirm(`هل أنت متأكد من استعادة الشكل الافتراضي لـ (${catalogItem.title})؟`)) {
+    const confirmed = await showConfirm(
+      'استعادة الشكل الافتراضي',
+      `هل أنت متأكد من استعادة الشكل الافتراضي لـ (${catalogItem.title})؟`,
+      { isDanger: true, confirmText: 'نعم، استعادة', cancelText: 'إلغاء' }
+    );
+    if (confirmed) {
       setTemplates(prev => ({
         ...prev,
         [selectedDocId]: generateDefaultConfig(catalogItem)
       }));
+      showSuccess('تمت الاستعادة', `تمت استعادة قالب (${catalogItem.title}) الافتراضي بنجاح`);
     }
   };
 
@@ -314,7 +324,7 @@ export const PrintSettingsView: React.FC = () => {
 
     const printWin = window.open('', '_blank', 'width=950,height=850');
     if (!printWin) {
-      alert('يرجى السماح بالنوافذ المنبثقة للطباعة');
+      showWarning('النوافذ المنبثقة محجوبة', 'يرجى السماح بالنوافذ المنبثقة للطباعة');
       return;
     }
 
@@ -325,8 +335,6 @@ export const PrintSettingsView: React.FC = () => {
       <html dir="rtl" lang="ar">
         <head>
           <title>${currentTemplate.docTitle} - طباعة تجريبية</title>
-          <link rel="preconnect" href="https://fonts.googleapis.com">
-          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;700;900&display=swap">
           <style>
             @page {
               size: ${currentTemplate.paperSize === 'thermal80' ? '80mm auto' : (currentTemplate.paperSize === 'a5' ? 'A5' : 'A4')};

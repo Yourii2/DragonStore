@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Warehouse
 } from 'lucide-react';
+import { systemAuthStore } from '../store/systemAuthStore';
 
 export const OverviewHero: React.FC<{ onSelectSection: (id: string) => void }> = ({ onSelectSection }) => {
   return (
@@ -35,11 +36,13 @@ export const OverviewHero: React.FC<{ onSelectSection: (id: string) => void }> =
               />
             </div>
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 mb-1">
-                <span>شركه دراجون للأنظمه الامنيه • م . ممدوح المصرى</span>
-              </div>
+              {systemAuthStore.installationState.businessConfig?.companyNameEn && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 mb-1">
+                  <span>{systemAuthStore.installationState.businessConfig.companyNameEn}</span>
+                </div>
+              )}
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                متجر دراجون للاليكترونيات و الاعمال الحره
+                {systemAuthStore.installationState.businessConfig?.companyNameAr || 'لوحة التحكم والعمليات الرئيسية'}
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 نظام إدارة العمليات التجارية، نقاط البيع، والمشاريع الميدانية مع التكامل المحاسبي على قاعدة بيانات MySQL

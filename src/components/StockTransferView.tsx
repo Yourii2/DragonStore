@@ -20,6 +20,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import { SearchableSelect } from './SearchableSelect';
+import { showSuccess, showError, showWarning, showToast } from '../utils/swal';
 
 interface WarehouseRecord {
   id: string;
@@ -172,11 +173,11 @@ export const StockTransferView: React.FC = () => {
   // Open modal
   const openNewTransferModal = () => {
     if (!canAdd) {
-      alert('ليس لديك صلاحية إنشاء إذن نقل وتحويل مخزني جديد');
+      showWarning('غير مصرح', 'ليس لديك صلاحية إنشاء إذن نقل وتحويل مخزني جديد');
       return;
     }
     if (warehouses.length < 2) {
-      alert('يجب أن يتوفر على الأقل مخزنان في النظام لإتمام عملية النقل والتحويل بين المخازن');
+      showWarning('تنبيه المخازن', 'يجب أن يتوفر على الأقل مخزنان في النظام لإتمام عملية النقل والتحويل بين المخازن');
     }
     const src = isRestrictedWarehouse ? userWarehouse : (warehouses.length > 0 ? warehouses[0].name : '');
     const otherWh = warehouses.find(w => w.name !== src);
@@ -246,7 +247,7 @@ export const StockTransferView: React.FC = () => {
   // Remove line
   const removeItemRow = (id: string) => {
     if (items.length <= 1) {
-      alert('يجب أن يحتوي إذن التحويل على صنف واحد على الأقل');
+      showWarning('تنبيه', 'يجب أن يحتوي إذن التحويل على صنف واحد على الأقل');
       return;
     }
     setItems(prev => prev.filter(item => item.id !== id));
@@ -261,17 +262,17 @@ export const StockTransferView: React.FC = () => {
     e.preventDefault();
 
     if (!sourceWarehouse || !targetWarehouse) {
-      alert('يرجى تحديد كل من المخزن المصدر والمخزن المستهدف');
+      showWarning('بيانات غير مكتملة', 'يرجى تحديد كل من المخزن المصدر والمخزن المستهدف');
       return;
     }
 
     if (sourceWarehouse === targetWarehouse) {
-      alert('لا يمكن أن يكون المخزن المصدر هو نفسه المخزن المستهدف! يرجى اختيار مخزنين مختلفين');
+      showWarning('خطأ في اختيار المخازن', 'لا يمكن أن يكون المخزن المصدر هو نفسه المخزن المستهدف! يرجى اختيار مخزنين مختلفين');
       return;
     }
 
     if (items.length === 0) {
-      alert('يرجى إضافة صنف واحد على الأقل للنقل');
+      showWarning('بيانات غير مكتملة', 'يرجى إضافة صنف واحد على الأقل للنقل');
       return;
     }
 
@@ -279,16 +280,16 @@ export const StockTransferView: React.FC = () => {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (!it.productId) {
-        alert(`يرجى تحديد المنتج في السطر رقم (${i + 1})`);
+        showWarning('بيانات غير مكتملة', `يرجى تحديد المنتج في السطر رقم (${i + 1})`);
         return;
       }
       const qty = Number(it.quantity) || 0;
       if (qty <= 0) {
-        alert(`يرجى إدخال كمية صحيحة في السطر رقم (${i + 1})`);
+        showWarning('كمية غير صحيحة', `يرجى إدخال كمية صحيحة في السطر رقم (${i + 1})`);
         return;
       }
       if (qty > it.currentStock) {
-        alert(`الكمية المراد نقلها في السطر رقم (${i + 1}) تتجاوز الرصيد الحالي المتاح (${it.currentStock}) للمنتج: ${it.name}`);
+        showWarning('الكمية تتجاوز المخزون', `الكمية المراد نقلها في السطر رقم (${i + 1}) تتجاوز الرصيد الحالي المتاح (${it.currentStock}) للمنتج: ${it.name}`);
         return;
       }
     }
@@ -320,14 +321,14 @@ export const StockTransferView: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`تم تنفيذ إذن نقل البضائع بنجاح برقم: ${data.reference_no}`);
+        showSuccess('تم التحويل بنجاح', `تم تنفيذ إذن نقل البضائع بنجاح برقم: ${data.reference_no}`);
         setShowOrderModal(false);
         await Promise.all([loadMasterData(), loadHistory()]);
       } else {
-        alert(data.message || 'حدث خطأ أثناء نقل البضائع');
+        showError('فشل التحويل', data.message || 'حدث خطأ أثناء نقل البضائع');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     } finally {
       setSubmitting(false);
     }

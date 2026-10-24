@@ -1,6 +1,9 @@
 @import "tailwindcss";
+@import "@fontsource/cairo/index.css";
+@import "@fontsource/jetbrains-mono/index.css";
+@import "sweetalert2/dist/sweetalert2.min.css";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@variant dark (&:where(.dark, .dark *));
 
 /* Dragon Security Systems Color Theme Tokens */
 :root {

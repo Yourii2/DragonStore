@@ -34,6 +34,7 @@ import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/export
 import { compressImageFile } from '../utils/imageCompressor';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import SearchableSelect from './SearchableSelect';
+import { showToast, showConfirm, showError, showWarning, showSuccess } from '../utils/swal';
 
 export type ProductType = 'PHYSICAL' | 'SERVICE' | 'DIGITAL';
 
@@ -381,17 +382,22 @@ export const ProductsManagementView: React.FC = () => {
         showToast(editingProduct ? 'تم تحديث بيانات المنتج بنجاح' : 'تمت إضافة المنتج الجديد بنجاح');
         fetchData();
       } else {
-        alert('حدث خطأ: ' + (resData.message || 'فشل حفظ المنتج'));
+        showError('خطأ أثناء الحفظ', resData.message || 'فشل حفظ بيانات المنتج');
       }
     } catch (err: any) {
       console.error(err);
-      alert('فشل الاتصال بالخادم: ' + err.message);
+      showError('فشل الاتصال بالخادم', err.message);
     }
   };
 
   // Handle Delete Product
   const handleDeleteProduct = async (id: string, name: string) => {
-    if (!window.confirm(`هل أنت متأكد من حذف المنتج: "${name}"؟`)) return;
+    const confirmed = await showConfirm(
+      'تأكيد حذف المنتج',
+      `هل أنت متأكد من رغبتك في حذف المنتج: "${name}" نهائياً من النظام؟`,
+      { isDanger: true, confirmText: 'نعم، حذف المنتج', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -399,11 +405,11 @@ export const ProductsManagementView: React.FC = () => {
         showToast('تم حذف المنتج بنجاح');
         fetchData();
       } else {
-        alert(data.message || 'فشل حذف المنتج');
+        showError('فشل الحذف', data.message || 'فشل حذف المنتج');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('فشل حذف المنتج');
+      showError('خطأ في الاتصال', 'فشل حذف المنتج: ' + err.message);
     }
   };
 
@@ -411,7 +417,7 @@ export const ProductsManagementView: React.FC = () => {
   const handleSaveCategoryQuick = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) {
-      alert('يرجى إدخال اسم التصنيف');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم التصنيف');
       return;
     }
 
@@ -444,11 +450,11 @@ export const ProductsManagementView: React.FC = () => {
         setNewCatImage('');
         showToast(`تمت إضافة تصنيف "${createdCat.name}" واختياره للمنتج الحالي فوراً!`);
       } else {
-        alert(data.message || 'فشل حفظ التصنيف');
+        showError('فشل حفظ التصنيف', data.message || 'تعذر حفظ التصنيف');
       }
     } catch (err: any) {
       console.error(err);
-      alert('فشل حفظ التصنيف: ' + err.message);
+      showError('فشل الاتصال بالخادم', 'فشل حفظ التصنيف: ' + err.message);
     } finally {
       setSavingCategory(false);
     }

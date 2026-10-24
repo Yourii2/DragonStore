@@ -14,7 +14,7 @@ interface LoginPageProps {
   onReinstall?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onReinstall }) => {
   const [username, setUsername] = useState<string>(() => {
     try {
       return localStorage.getItem('dragon_erp_remembered_username') || '';
@@ -101,8 +101,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             />
           </div>
           
-          <h1 className="text-lg font-black text-slate-100">متجر دراجون للاليكترونيات و الاعمال الحره</h1>
-          <p className="text-xs text-cyan-400 font-bold mt-1">شركه دراجون للأنظمه الامنيه • م . ممدوح المصرى</p>
+          <h1 className="text-lg font-black text-slate-100">
+            {systemAuthStore.installationState.businessConfig?.companyNameAr || 'نظام إدارة المتاجر والمشاريع'}
+          </h1>
+          <p className="text-xs text-cyan-400 font-bold mt-1">
+            {systemAuthStore.installationState.businessConfig?.companyNameEn || 'بوابة تسجيل الدخول الآمنة'}
+          </p>
         </div>
 
         {/* Login Form Body */}
@@ -185,6 +189,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             </button>
 
           </form>
+
+          {onReinstall && (
+            <div className="pt-3 text-center border-t border-slate-800">
+              <button
+                type="button"
+                onClick={onReinstall}
+                className="text-xs text-slate-400 hover:text-cyan-400 transition-colors font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>لم يتم تنصيب النظام أو ترغب في إعادة التثبيت؟</span>
+                <span className="text-cyan-400 font-bold underline">معالج التثبيت</span>
+              </button>
+            </div>
+          )}
 
         </div>
 

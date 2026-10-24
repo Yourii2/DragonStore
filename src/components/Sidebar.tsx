@@ -76,6 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [showNetworkPage, setShowNetworkPage] = useState<boolean>(false);
   const [showSoftwareFeatures, setShowSoftwareFeatures] = useState<boolean>(true);
+  const [companyTitle, setCompanyTitle] = useState<string>('');
 
   useEffect(() => {
     const fetchCompanyProfile = async () => {
@@ -84,6 +85,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         const data = await res.json();
         if (data.success && data.data) {
           setShowNetworkPage(Boolean(data.data.show_network_page));
+          if (data.data.company_name) {
+            setCompanyTitle(data.data.company_name);
+          }
           if (data.data.show_software_features !== undefined) {
             setShowSoftwareFeatures(Boolean(data.data.show_software_features));
           }
@@ -325,11 +329,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Centered App Title & Company Info */}
           <h2 className="text-sm font-black tracking-tight text-slate-900 dark:text-slate-100">
-            متجر دراجون للاليكترونيات و الاعمال الحره
+            {companyTitle || 'نظام إدارة المتاجر والمشاريع'}
           </h2>
-          <span className="text-[11px] text-cyan-500 dark:text-cyan-400 font-bold mt-0.5">
-            شركه دراجون للأنظمه الامنيه
-          </span>
         </div>
 
         {/* Navigation Items List with Accordion / Dropdowns */}

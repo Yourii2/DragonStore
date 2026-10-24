@@ -20,6 +20,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { compressImageFile } from '../utils/imageCompressor';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 interface CategoryRecord {
   id: string;
@@ -115,7 +116,7 @@ export const CategoriesManagementView: React.FC = () => {
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('يرجى إدخال اسم التصنيف');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم التصنيف');
       return;
     }
 
@@ -137,12 +138,13 @@ export const CategoriesManagementView: React.FC = () => {
         setShowAddEditModal(false);
         setEditingCategory(null);
         setFormData({ name: '', description: '', image_url: '' });
+        showToast(editingCategory ? 'تم تحديث بيانات التصنيف بنجاح' : 'تمت إضافة التصنيف بنجاح');
         await fetchCategories();
       } else {
-        alert(result.message || 'فشل حفظ التصنيف');
+        showError('فشل الحفظ', result.message || 'فشل حفظ التصنيف');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال', err.message);
     }
   };
 
@@ -158,11 +160,19 @@ export const CategoriesManagementView: React.FC = () => {
 
   const handleDeleteCategory = async (c: CategoryRecord) => {
     if (c.products_count > 0 || c.total_pieces > 0) {
-      alert(`لا يمكن حذف التصنيف (${c.name}) لأنه يحتوي على ${c.products_count} منتج بعدد ${c.total_pieces} قطعة. يجب نقل أو تفريغ منتجات التصنيف أولاً.`);
+      showWarning(
+        'لا يمكن حذف التصنيف',
+        `لا يمكن حذف التصنيف (${c.name}) لأنه يحتوي على ${c.products_count} منتج بعدد ${c.total_pieces} قطعة. يجب نقل أو تفريغ منتجات التصنيف أولاً.`
+      );
       return;
     }
 
-    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف التصنيف (${c.name})؟`)) {
+    const confirmed = await showConfirm(
+      'تأكيد حذف التصنيف',
+      `هل أنت متأكد من رغبتك في حذف التصنيف (${c.name}) نهائياً؟`,
+      { isDanger: true, confirmText: 'نعم، حذف التصنيف', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) {
       return;
     }
 
@@ -170,12 +180,13 @@ export const CategoriesManagementView: React.FC = () => {
       const res = await fetch(`/api/categories/${c.id}`, { method: 'DELETE' });
       const result = await res.json();
       if (result.success) {
+        showToast('تم حذف التصنيف بنجاح');
         await fetchCategories();
       } else {
-        alert(result.message || 'فشل حذف التصنيف');
+        showError('فشل الحذف', result.message || 'فشل حذف التصنيف');
       }
     } catch (err: any) {
-      alert('خطأ أثناء الحذف: ' + err.message);
+      showError('خطأ أثناء الحذف', err.message);
     }
   };
 

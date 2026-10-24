@@ -21,6 +21,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import SearchableSelect from './SearchableSelect';
+import { showSuccess, showError, showWarning, showToast } from '../utils/swal';
 
 export interface EmployeeOption {
   id: string;
@@ -131,7 +132,7 @@ export const EmployeeTransactionsView: React.FC = () => {
   const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!txForm.employee_id || !txForm.amount) {
-      alert('يرجى اختيار الموظف وتحديد المبلغ');
+      showWarning('بيانات غير مكتملة', 'يرجى اختيار الموظف وتحديد المبلغ');
       return;
     }
 
@@ -167,13 +168,14 @@ export const EmployeeTransactionsView: React.FC = () => {
           payment_method: 'CASH',
           notes: ''
         });
+        showToast('تم تسجيل حركة الموظف وتحديث الأرصدة بنجاح');
         fetchTransactions();
         fetchEmployees();
       } else {
-        alert(data.message || 'فشل تسجيل معاملة الموظف');
+        showError('فشل الحفظ', data.message || 'فشل تسجيل معاملة الموظف');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     }
   };
 

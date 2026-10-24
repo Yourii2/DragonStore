@@ -24,20 +24,103 @@ app.use(express.json());
 // API: System Status & Installation API
 // -------------------------------------------------------------
 
-app.get('/api/system/status', (req, res) => {
+app.get('/api/system/status', async (req, res) => {
   const config = loadConfigFile();
+  let isInstalled = Boolean(config.isInstalled);
+  let businessConfig: any = null;
+  let adminAccount: any = null;
+
+  // Dynamically verify database existence and schema if config flags isInstalled = true
+  if (isInstalled && config.dbConfig) {
+    let conn;
+    try {
+      conn = await mysql.createConnection({
+        host: config.dbConfig.host || 'localhost',
+        port: Number(config.dbConfig.port) || 3306,
+        database: config.dbConfig.database,
+        user: config.dbConfig.user || 'root',
+        password: config.dbConfig.password || '',
+        connectTimeout: 2000
+      });
+
+      // Verify essential tables exist
+      const [tableRows]: any = await conn.query("SHOW TABLES LIKE 'users'");
+      if (!tableRows || tableRows.length === 0) {
+        console.warn('⚠️ [System Status]: Database exists but users table is missing. Re-routing to Installation Wizard.');
+        isInstalled = false;
+      } else {
+        // Fetch businessConfig directly from database (system_settings)
+        try {
+          const [settingsRows]: any = await conn.query(
+            "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('business_config', 'company_profile')"
+          );
+          for (const row of settingsRows) {
+            try {
+              const val = JSON.parse(row.setting_value);
+              if (row.setting_key === 'business_config') {
+                businessConfig = val;
+              } else if (!businessConfig && row.setting_key === 'company_profile') {
+                businessConfig = {
+                  companyNameAr: val.company_name || 'دراجون للأنظمة',
+                  companyNameEn: val.company_name_en || 'Dragon Systems',
+                  currency: val.currency || 'EGP',
+                  currencySymbol: val.currency_symbol || 'ج.م',
+                  country: 'جمهورية مصر العربية',
+                  taxNumber: val.tax_number || '',
+                  commercialRecord: val.commercial_record || '',
+                  shopUnitName: 'متجر الحواسيب والشبكات',
+                  freelanceUnitName: 'تطوير البرمجيات والحلول السحابية',
+                  defaultSharedShopRatio: 70,
+                  defaultSharedFreelanceRatio: 30
+                };
+              }
+            } catch {}
+          }
+        } catch (settingsErr: any) {
+          console.warn('⚠️ Could not query system_settings:', settingsErr.message);
+        }
+
+        // Fetch super admin account directly from database (users)
+        try {
+          const [userRows]: any = await conn.query(
+            "SELECT full_name, username, email, phone, role FROM users WHERE role = 'SUPER_ADMIN' ORDER BY id ASC LIMIT 1"
+          );
+          if (userRows && userRows.length > 0) {
+            adminAccount = {
+              fullName: userRows[0].full_name,
+              username: userRows[0].username,
+              email: userRows[0].email,
+              phone: userRows[0].phone,
+              role: userRows[0].role
+            };
+          }
+        } catch (userErr: any) {
+          console.warn('⚠️ Could not query super admin:', userErr.message);
+        }
+      }
+    } catch (err: any) {
+      console.warn('⚠️ [System Status]: Database verification failed (' + err.message + '). Re-routing to Installation Wizard.');
+      isInstalled = false;
+    } finally {
+      if (conn) {
+        await conn.end().catch(() => {});
+      }
+    }
+  }
+
   res.json({
-    isInstalled: config.isInstalled,
-    installedAt: config.installedAt,
-    businessConfig: config.businessConfig,
-    adminAccount: config.adminAccount ? {
-      fullName: config.adminAccount.fullName,
-      username: config.adminAccount.username,
-      email: config.adminAccount.email,
-      phone: config.adminAccount.phone,
-      role: config.adminAccount.role
-    } : null
+    isInstalled,
+    installedAt: isInstalled ? config.installedAt : null,
+    businessConfig,
+    adminAccount
   });
+});
+
+app.post('/api/system/reset', (req, res) => {
+  const config: SystemConfig = { isInstalled: false };
+  saveConfigFile(config);
+  resetPool();
+  res.json({ success: true, message: 'تمت إعادة ضبط النظام إلى حالة ما قبل التثبيت بنجاح' });
 });
 
 // -------------------------------------------------------------
@@ -69,31 +152,55 @@ app.get('/api/settings/connection', (req, res) => {
 app.post('/api/settings/connection', async (req, res) => {
   const { host, port, database, username, password } = req.body;
   try {
-    // 1. Test connecting with new credentials
+    // 1. Test connecting to MySQL server directly without forcing database to exist yet
     const conn = await mysql.createConnection({
       host: host || 'localhost',
       port: Number(port) || 3306,
-      database: database,
       user: username || 'root',
       password: password !== undefined ? password : ''
     });
     await conn.query('SELECT 1');
+
+    // 2. If database name is supplied, ensure it exists or create it automatically
+    let createdNew = false;
+    let tablesCount = 0;
+    if (database) {
+      const [dbRows]: any = await conn.query(`SHOW DATABASES LIKE '${database.replace(/'/g, "\\'")}'`);
+      if (!dbRows || dbRows.length === 0) {
+        await conn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+        createdNew = true;
+      } else {
+        const [tables]: any = await conn.query(`SHOW TABLES FROM \`${database}\``);
+        tablesCount = Array.isArray(tables) ? tables.length : 0;
+      }
+    }
     await conn.end();
 
-    // 2. Save to db_config.json
+    // 3. Save to db_config.json only if system is already installed or explicitly requested (not on initial test)
     const config = loadConfigFile();
-    config.dbConfig = {
-      host: host || 'localhost',
-      port: Number(port) || 3306,
-      database: database,
-      user: username || 'root',
-      password: password !== undefined ? password : '',
-      charset: 'utf8mb4'
-    };
-    saveConfigFile(config);
-    resetPool();
+    if (config.isInstalled || req.body.saveConfig === true) {
+      config.dbConfig = {
+        host: host || 'localhost',
+        port: Number(port) || 3306,
+        database: database || 'dragon_erp_production',
+        user: username || 'root',
+        password: password !== undefined ? password : '',
+        charset: 'utf8mb4'
+      };
+      saveConfigFile(config);
+      resetPool();
+    }
 
-    res.json({ success: true, message: 'تم اختبار وحفظ إعدادات الاتصال بقاعدة البيانات بنجاح' });
+    const successMessage = createdNew
+      ? `تم الاتصال بالخادم بنجاح وإنشاء قاعدة البيانات "${database}" تلقائياً لأنها لم تكن موجودة!`
+      : `تم الاتصال بنجاح بقاعدة البيانات "${database}" (${tablesCount === 0 ? 'فارغة وجاهزة للتنصيب' : `تحتوي على ${tablesCount} جدول`})`;
+
+    res.json({ 
+      success: true, 
+      message: successMessage,
+      createdDatabase: createdNew,
+      tablesCount 
+    });
   } catch (err: any) {
     res.status(400).json({ success: false, message: 'فشل الاتصال بقاعدة البيانات: ' + err.message });
   }
@@ -102,30 +209,24 @@ app.post('/api/settings/connection', async (req, res) => {
 // Get Company Settings
 app.get('/api/settings/company', async (req, res) => {
   const pool = getPool();
-  const config = loadConfigFile();
-  const defaultBusiness = config.businessConfig || {
-    companyNameAr: 'دراجون للأنظمة الأمنية',
-    companyNameEn: 'Dragon Security Systems',
+  const emptyCompany = {
+    logo: '',
+    company_name: '',
+    phones: '',
+    address: '',
+    invoice_footer: '',
+    tax_number: '',
+    commercial_record: '',
+    vat_rate: 14,
     currency: 'EGP',
-    currencySymbol: 'ج.م',
-    taxNumber: '',
-    commercialRecord: ''
+    show_network_page: false,
+    show_software_features: true
   };
 
   if (!pool) {
     return res.json({
       success: true,
-      data: {
-        logo: '',
-        company_name: defaultBusiness.companyNameAr,
-        phones: '01050016289',
-        address: 'القاهرة - المقر الرئيسي',
-        invoice_footer: 'شكراً لتعاملكم معنا - البضاعة المباعة ترد وتستبدل خلال 14 يوماً وفق الشروط والأحكام',
-        tax_number: defaultBusiness.taxNumber || '',
-        commercial_record: defaultBusiness.commercialRecord || '',
-        vat_rate: 14,
-        currency: defaultBusiness.currency || 'EGP'
-      }
+      data: emptyCompany
     });
   }
 
@@ -139,19 +240,7 @@ app.get('/api/settings/company', async (req, res) => {
       return res.json({ success: true, data: parsed });
     }
 
-    const initialData = {
-      logo: '',
-      company_name: defaultBusiness.companyNameAr,
-      phones: '01050016289',
-      address: 'القاهرة - المقر الرئيسي',
-      invoice_footer: 'شكراً لتعاملكم معنا - البضاعة المباعة ترد وتستبدل خلال 14 يوماً وفق الشروط والأحكام',
-      tax_number: defaultBusiness.taxNumber || '',
-      commercial_record: defaultBusiness.commercialRecord || '',
-      vat_rate: 14,
-      currency: defaultBusiness.currency || 'EGP'
-    };
-
-    res.json({ success: true, data: initialData });
+    res.json({ success: true, data: emptyCompany });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -169,16 +258,7 @@ app.post('/api/settings/company', async (req, res) => {
        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
       [JSON.stringify(companyData)]
     );
-
-    // Also sync companyName in config file
-    const config = loadConfigFile();
-    if (config.businessConfig) {
-      if (companyData.company_name) config.businessConfig.companyNameAr = companyData.company_name;
-      if (companyData.tax_number) config.businessConfig.taxNumber = companyData.tax_number;
-      if (companyData.commercial_record) config.businessConfig.commercialRecord = companyData.commercial_record;
-      if (companyData.currency) config.businessConfig.currency = companyData.currency;
-      saveConfigFile(config);
-    }
+    // Company profile stored directly in MySQL system_settings
 
     res.json({ success: true, message: 'تم حفظ إعدادات الشركة بنجاح' });
   } catch (err: any) {
@@ -979,27 +1059,7 @@ app.post('/api/system/install', async (req, res) => {
         user: databaseConfig.username || 'root',
         password: databaseConfig.password || '',
         charset: 'utf8mb4'
-      },
-      businessConfig: businessConfig || {
-        companyNameAr: companyConfig?.company_name || 'دراجون للأنظمة',
-        companyNameEn: 'Dragon Systems',
-        currency: 'EGP',
-        currencySymbol: 'ج.م',
-        country: 'جمهورية مصر العربية',
-        taxNumber: companyConfig?.tax_number || '',
-        commercialRecord: companyConfig?.commercial_record || '',
-        shopUnitName: 'متجر الحواسيب والشبكات',
-        freelanceUnitName: 'تطوير البرمجيات والحلول السحابية',
-        defaultSharedShopRatio: 70,
-        defaultSharedFreelanceRatio: 30
-      },
-      adminAccount: adminAccount ? {
-        fullName: adminAccount.fullName,
-        username: adminAccount.username,
-        email: adminAccount.email,
-        phone: adminAccount.phone || '',
-        role: 'SUPER_ADMIN'
-      } : undefined
+      }
     };
     saveConfigFile(systemConfig);
 
@@ -1042,14 +1102,12 @@ async function createAutoBackup(reason: string): Promise<any> {
   };
 
   try {
-    const backupDir = path.join(__dirname, 'backups');
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
-    const filename = `autobackup_${reason}_${Date.now()}.json`;
-    fs.writeFileSync(path.join(backupDir, filename), JSON.stringify(payload, null, 2), 'utf-8');
-  } catch (fsErr) {
-    console.error('Failed to write backup file to disk:', fsErr);
+    await pool.query(
+      `INSERT INTO system_backups (reason, backup_data) VALUES (?, ?)`,
+      [reason, JSON.stringify(payload)]
+    );
+  } catch (dbErr: any) {
+    console.error('Failed to write backup to database:', dbErr.message);
   }
 
   return payload;
@@ -2567,6 +2625,33 @@ app.post('/api/financial-transactions', async (req, res) => {
       ]
     );
 
+    // 4. Sync Expense to expenses table if transaction_type === 'EXPENSE'
+    if (t.transaction_type === 'EXPENSE') {
+      try {
+        const expId = `exp-${Date.now()}`;
+        const jvId = `JV-${Date.now().toString().slice(-4)}`;
+        await pool.query(
+          `INSERT INTO expenses (id, title, category, date, amount, type, allocation_ratio, shop_portion, freelance_portion, payment_account, journal_entry_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            expId,
+            t.notes || t.category || 'مصروف عام',
+            t.category || 'مصروفات تشغيلية',
+            date,
+            amount,
+            'SHARED_DEFAULT',
+            '70_30',
+            amount,
+            0,
+            accountName,
+            jvId
+          ]
+        );
+      } catch (err: any) {
+        console.warn('Sync expense to expenses table warn:', err.message);
+      }
+    }
+
     res.json({ success: true, id, message: 'تم تسجيل المعاملة المالية وتحديث الأرصدة بنجاح' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -2610,6 +2695,47 @@ app.post('/api/expenses', async (req, res) => {
     res.json({ success: true, id });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Expense Categories
+app.get('/api/expenses/categories', async (req, res) => {
+  const defaultCategories = [
+    'كهرباء ومياه ومرافق',
+    'إيجارات ومقرات',
+    'ضيافة وبوفيه ونثريات',
+    'صيانة ومعدات وقطع غيار',
+    'نقل وشحن وانتقالات',
+    'دعاية وتسويق وإعلانات',
+    'برمجيات واشتراكات وسيرفرات',
+    'أدوات مكتبية ومطبوعات',
+    'رسوم وتراخيص ومصروفات حكومية',
+    'مصروفات تشغيلية عامة',
+    'أخرى / متنوعة'
+  ];
+
+  const pool = getPool();
+  if (!pool) {
+    return res.json({ success: true, categories: defaultCategories });
+  }
+
+  try {
+    const [rows1]: any = await pool.query(
+      `SELECT DISTINCT category FROM expenses WHERE category IS NOT NULL AND category != ''`
+    );
+    const [rows2]: any = await pool.query(
+      `SELECT DISTINCT category FROM financial_transactions WHERE transaction_type = 'EXPENSE' AND category IS NOT NULL AND category != ''`
+    );
+    const set = new Set<string>(defaultCategories);
+    for (const r of rows1) {
+      if (r.category && r.category.trim()) set.add(r.category.trim());
+    }
+    for (const r of rows2) {
+      if (r.category && r.category.trim()) set.add(r.category.trim());
+    }
+    res.json({ success: true, categories: Array.from(set) });
+  } catch (err: any) {
+    res.json({ success: true, categories: defaultCategories });
   }
 });
 
@@ -3655,10 +3781,17 @@ app.get('/api/reports', async (req, res) => {
       resultData = { rows, totals };
     }
     else if (type === 'expenses') {
-      // 6. Expenses Breakdown Report
+      // 6. Expenses Breakdown Report (unified query)
       let query = `
         SELECT id, title, category, date, amount, type, allocation_ratio, shop_portion, freelance_portion, payment_account, created_at
-        FROM expenses
+        FROM (
+          SELECT id, title, category, date, amount, type, allocation_ratio, shop_portion, freelance_portion, payment_account, created_at 
+          FROM expenses
+          UNION ALL
+          SELECT id, notes AS title, COALESCE(NULLIF(category, ''), 'مصروفات تشغيلية') AS category, date, amount, 'SHARED_DEFAULT' AS type, '70_30' AS allocation_ratio, amount AS shop_portion, 0.00 AS freelance_portion, account_name AS payment_account, created_at
+          FROM financial_transactions
+          WHERE transaction_type = 'EXPENSE' AND id NOT IN (SELECT id FROM expenses)
+        ) AS combined_expenses
         WHERE 1=1
       `;
       const params: any[] = [];
@@ -3679,6 +3812,28 @@ app.get('/api/reports', async (req, res) => {
       query += ' ORDER BY date DESC, created_at DESC';
       const [rows]: any = await pool.query(query, params);
 
+      // Compute category breakdown
+      const categoryMap: { [cat: string]: { category: string; total: number; count: number; percentage: number } } = {};
+      let overallTotal = 0;
+
+      for (const row of rows) {
+        const amt = Number(row.amount || 0);
+        overallTotal += amt;
+        const cat = (row.category && row.category.trim()) || 'أخرى / متنوعة';
+        if (!categoryMap[cat]) {
+          categoryMap[cat] = { category: cat, total: 0, count: 0, percentage: 0 };
+        }
+        categoryMap[cat].total += amt;
+        categoryMap[cat].count += 1;
+      }
+
+      for (const cat in categoryMap) {
+        categoryMap[cat].percentage = overallTotal > 0 ? Number(((categoryMap[cat].total / overallTotal) * 100).toFixed(1)) : 0;
+      }
+
+      const categoryBreakdown = Object.values(categoryMap).sort((a, b) => b.total - a.total);
+      const topCategory = categoryBreakdown.length > 0 ? categoryBreakdown[0] : null;
+
       const totals = rows.reduce(
         (acc: any, row: any) => {
           acc.count += 1;
@@ -3690,7 +3845,16 @@ app.get('/api/reports', async (req, res) => {
         { count: 0, totalAmount: 0, shopPortion: 0, freelancePortion: 0 }
       );
 
-      resultData = { rows, totals };
+      const averageExpense = totals.count > 0 ? Number((totals.totalAmount / totals.count).toFixed(2)) : 0;
+
+      resultData = { 
+        rows, 
+        totals, 
+        categoryBreakdown, 
+        topCategory,
+        averageExpense,
+        selectedCategory: category || 'all'
+      };
     }
     else if (type === 'pnl') {
       // 7. Standard P&L Statement calculated from actual tables
@@ -4042,7 +4206,16 @@ app.get('/api/reports', async (req, res) => {
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        watch: {
+          ignored: [
+            '**/db_config.json',
+            '**/*.json',
+            '**/dist/**'
+          ]
+        }
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -4051,6 +4224,31 @@ async function startServer() {
     app.get('*', (req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
+  }
+
+  // Ensure all database tables exist and are up to date
+  try {
+    const config = loadConfigFile();
+    if (config.isInstalled && config.dbConfig) {
+      const pool = getPool();
+      if (pool) {
+        const statements = INIT_MYSQL_TABLES_SQL.split(';')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+        for (const sql of statements) {
+          await pool.query(sql);
+        }
+        // Ensure salary_cycle column exists
+        try {
+          const [cols]: any = await pool.query("SHOW COLUMNS FROM employees LIKE 'salary_cycle'");
+          if (cols.length === 0) {
+            await pool.query("ALTER TABLE employees ADD COLUMN salary_cycle VARCHAR(50) NOT NULL DEFAULT 'MONTHLY' AFTER base_salary");
+          }
+        } catch {}
+      }
+    }
+  } catch (schemaErr: any) {
+    console.warn('⚠️ Automated schema sync notice:', schemaErr.message);
   }
 
   app.listen(PORT, '0.0.0.0', () => {

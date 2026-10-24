@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import mysql, { Pool } from 'mysql2/promise';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,29 +20,9 @@ export interface SystemConfig {
   isInstalled: boolean;
   installedAt?: string;
   dbConfig?: DBConfig;
-  businessConfig?: {
-    companyNameAr: string;
-    companyNameEn: string;
-    currency: string;
-    currencySymbol: string;
-    country: string;
-    taxNumber?: string;
-    commercialRecord?: string;
-    shopUnitName: string;
-    freelanceUnitName: string;
-    defaultSharedShopRatio: number;
-    defaultSharedFreelanceRatio: number;
-  };
-  adminAccount?: {
-    fullName: string;
-    username: string;
-    email: string;
-    phone: string;
-    role: string;
-  };
 }
 
-let pool: mysql.Pool | null = null;
+let pool: Pool | null = null;
 
 export function loadConfigFile(): SystemConfig {
   try {
@@ -60,7 +40,7 @@ export function saveConfigFile(config: SystemConfig): void {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
 }
 
-export function getPool(): mysql.Pool | null {
+export function getPool(): Pool | null {
   if (pool) return pool;
 
   const config = loadConfigFile();

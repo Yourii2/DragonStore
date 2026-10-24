@@ -20,6 +20,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import { SearchableSelect } from './SearchableSelect';
+import { showSuccess, showError, showWarning, showToast } from '../utils/swal';
 
 interface Supplier {
   id: string;
@@ -177,7 +178,7 @@ export const StockReturnView: React.FC = () => {
   // Open modal
   const openNewReturnModal = () => {
     if (!canAdd) {
-      alert('ليس لديك صلاحية عمل إذن ارتجاع جديد');
+      showWarning('غير مصرح', 'ليس لديك صلاحية عمل إذن ارتجاع جديد');
       return;
     }
     const defaultWh = isRestrictedWarehouse ? userWarehouse : (warehouses.length > 0 ? warehouses[0].name : 'مخزن المتجر الرئيسي');
@@ -246,7 +247,7 @@ export const StockReturnView: React.FC = () => {
   // Remove line
   const removeItemRow = (id: string) => {
     if (items.length <= 1) {
-      alert('يجب أن يحتوي إذن الارتجاع على صنف واحد على الأقل');
+      showWarning('تنبيه', 'يجب أن يحتوي إذن الارتجاع على صنف واحد على الأقل');
       return;
     }
     setItems(prev => prev.filter(item => item.id !== id));
@@ -261,12 +262,12 @@ export const StockReturnView: React.FC = () => {
     e.preventDefault();
 
     if (!sourceWarehouse) {
-      alert('يرجى اختيار مخزن خروج المرتجع');
+      showWarning('بيانات غير مكتملة', 'يرجى اختيار مخزن خروج المرتجع');
       return;
     }
 
     if (items.length === 0) {
-      alert('يرجى إضافة صنف واحد على الأقل');
+      showWarning('بيانات غير مكتملة', 'يرجى إضافة صنف واحد على الأقل');
       return;
     }
 
@@ -274,16 +275,16 @@ export const StockReturnView: React.FC = () => {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (!it.productId) {
-        alert(`يرجى تحديد المنتج في السطر رقم (${i + 1})`);
+        showWarning('بيانات غير مكتملة', `يرجى تحديد المنتج في السطر رقم (${i + 1})`);
         return;
       }
       const qty = Number(it.quantity) || 0;
       if (qty <= 0) {
-        alert(`يرجى إدخال كمية صحيحة في السطر رقم (${i + 1})`);
+        showWarning('كمية غير صحيحة', `يرجى إدخال كمية صحيحة في السطر رقم (${i + 1})`);
         return;
       }
       if (qty > it.currentStock) {
-        alert(`الكمية المطلوبة للارتجاع في السطر رقم (${i + 1}) تتجاوز الرصيد الحالي المتاح (${it.currentStock}) للمنتج: ${it.name}`);
+        showWarning('الكمية تتجاوز المخزون', `الكمية المطلوبة للارتجاع في السطر رقم (${i + 1}) تتجاوز الرصيد الحالي المتاح (${it.currentStock}) للمنتج: ${it.name}`);
         return;
       }
     }
@@ -318,14 +319,14 @@ export const StockReturnView: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`تم تسجيل إذن ارتجاع البضاعة بنجاح برقم إذن: ${data.reference_no}`);
+        showSuccess('تم تسجيل إذن الارتجاع', `تم تسجيل إذن ارتجاع البضاعة بنجاح برقم إذن: ${data.reference_no}`);
         setShowOrderModal(false);
         await Promise.all([loadMasterData(), loadHistory()]);
       } else {
-        alert(data.message || 'حدث خطأ أثناء حفظ حركة الارتجاع');
+        showError('فشل حفظ المرتجع', data.message || 'حدث خطأ أثناء حفظ حركة الارتجاع');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     } finally {
       setSubmitting(false);
     }

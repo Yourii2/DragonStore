@@ -22,6 +22,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import { SearchableSelect } from './SearchableSelect';
+import { showSuccess, showError, showWarning, showToast } from '../utils/swal';
 
 interface Supplier {
   id: string;
@@ -185,7 +186,7 @@ export const StockInView: React.FC = () => {
   // Open modal with 1 fresh empty row
   const openNewReceiptModal = () => {
     if (!canAdd) {
-      alert('ليس لديك صلاحية عمل إذن استلام بضائع جديد');
+      showWarning('غير مصرح', 'ليس لديك صلاحية عمل إذن استلام بضائع جديد');
       return;
     }
     const defaultWh = isRestrictedWarehouse ? userWarehouse : (warehouses.length > 0 ? warehouses[0].name : 'مخزن المتجر الرئيسي');
@@ -268,7 +269,7 @@ export const StockInView: React.FC = () => {
   // Remove row
   const removeItemRow = (id: string) => {
     if (items.length <= 1) {
-      alert('يجب أن تحتوي فاتورة الاستلام على صنف واحد على الأقل');
+      showWarning('تنبيه', 'يجب أن تحتوي فاتورة الاستلام على صنف واحد على الأقل');
       return;
     }
     setItems(prev => prev.filter(item => item.id !== id));
@@ -283,12 +284,12 @@ export const StockInView: React.FC = () => {
     e.preventDefault();
 
     if (!targetWarehouse) {
-      alert('يرجى اختيار مخزن الاستلام المستهدف');
+      showWarning('بيانات غير مكتملة', 'يرجى اختيار مخزن الاستلام المستهدف');
       return;
     }
 
     if (items.length === 0) {
-      alert('يرجى إضافة صنف واحد على الأقل');
+      showWarning('بيانات غير مكتملة', 'يرجى إضافة صنف واحد على الأقل');
       return;
     }
 
@@ -296,15 +297,15 @@ export const StockInView: React.FC = () => {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (!it.isNewProduct && !it.productId) {
-        alert(`يرجى اختيار المنتج في السطر رقم (${i + 1})`);
+        showWarning('بيانات غير مكتملة', `يرجى اختيار المنتج في السطر رقم (${i + 1})`);
         return;
       }
       if (it.isNewProduct && !it.name.trim()) {
-        alert(`يرجى كتابة اسم المنتج الجديد في السطر رقم (${i + 1})`);
+        showWarning('بيانات غير مكتملة', `يرجى كتابة اسم المنتج الجديد في السطر رقم (${i + 1})`);
         return;
       }
       if ((Number(it.quantity) || 0) <= 0) {
-        alert(`يرجى إدخال كمية صحيحة أكبر من صفر في السطر رقم (${i + 1})`);
+        showWarning('كمية غير صحيحة', `يرجى إدخال كمية صحيحة أكبر من صفر في السطر رقم (${i + 1})`);
         return;
       }
     }
@@ -343,14 +344,17 @@ export const StockInView: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`تم استلام البضائع بنجاح برقم إذن: ${data.reference_no} بعدد أصناف (${data.count})`);
+        showSuccess(
+          'تم استلام البضائع بنجاح',
+          `تم استلام البضائع وتوريدها للمخزن برقم إذن: ${data.reference_no} بعدد أصناف (${data.count})`
+        );
         setShowOrderModal(false);
         await Promise.all([loadMasterData(), loadHistory()]);
       } else {
-        alert(data.message || 'حدث خطأ أثناء حفظ حركة الاستلام');
+        showError('فشل استلام البضائع', data.message || 'حدث خطأ أثناء حفظ حركة الاستلام');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     } finally {
       setSubmitting(false);
     }

@@ -1,32 +1,3 @@
 {
-  "isInstalled": true,
-  "installedAt": "2026-10-14T03:28:56.726Z",
-  "dbConfig": {
-    "host": "localhost",
-    "port": 3306,
-    "database": "dragon_erp_production",
-    "user": "root",
-    "password": "Bad220020!@#",
-    "charset": "utf8mb4"
-  },
-  "businessConfig": {
-    "companyNameAr": "دراجون للأنظمه الامنيه",
-    "companyNameEn": "Dragon Security Systems",
-    "currency": "EGP",
-    "currencySymbol": "ج.م",
-    "country": "جمهورية مصر العربية",
-    "taxNumber": "",
-    "commercialRecord": "CR-104829",
-    "shopUnitName": "متجر الحواسيب والشبكات والخدمات الفنية (BU 1)",
-    "freelanceUnitName": "تطوير البرمجيات والحلول السحابية (BU 2)",
-    "defaultSharedShopRatio": 50,
-    "defaultSharedFreelanceRatio": 50
-  },
-  "adminAccount": {
-    "fullName": "ممدوح المصرى",
-    "username": "admin",
-    "email": "mamdouh.hisham89@gmail.com",
-    "phone": "01050016289",
-    "role": "SUPER_ADMIN"
-  }
+  "isInstalled": false
 }

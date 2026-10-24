@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { SearchableSelect } from './SearchableSelect';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 interface Product {
   id: string;
@@ -437,17 +438,22 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
   };
 
   // Confirm Variable Price / Cost Modal
-  const handleConfirmPrompt = (e: React.FormEvent) => {
+  const handleConfirmPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pendingProduct) return;
 
     if (promptPrice <= 0 && promptType !== 'COST') {
-      alert('يرجى إدخال سعر بيع صحيح أكبر من صفر');
+      showWarning('سعر غير صحيح', 'يرجى إدخال سعر بيع صحيح أكبر من صفر');
       return;
     }
 
     if (pendingProduct.min_sell_price > 0 && promptPrice < pendingProduct.min_sell_price && promptType !== 'COST') {
-      if (!window.confirm(`تنبيه: سعر البيع المدخل (${promptPrice} ج.م) أقل من الحد الأدنى المسموح به للبيع (${pendingProduct.min_sell_price} ج.م). هل أنت متأكد من المتابعة؟`)) {
+      const confirmed = await showConfirm(
+        'تنبيه الحد الأدنى لسعر البيع',
+        `تنبيه: سعر البيع المدخل (${promptPrice} ج.م) أقل من الحد الأدنى المسموح به للبيع (${pendingProduct.min_sell_price} ج.م). هل أنت متأكد من المتابعة؟`,
+        { isDanger: true, confirmText: 'نعم، متابعة', cancelText: 'إلغاء' }
+      );
+      if (!confirmed) {
         return;
       }
     }
@@ -596,9 +602,14 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
   };
 
   // Resume suspended cart
-  const handleResumeCart = (hold: SuspendedCart) => {
+  const handleResumeCart = async (hold: SuspendedCart) => {
     if (cart.length > 0) {
-      if (!window.confirm('يوجد أصناف في السلة الحالية، هل تريد استبدالها بالفاتورة المعلقة؟')) {
+      const confirmed = await showConfirm(
+        'استبدال السلة الحالية',
+        'يوجد أصناف في السلة الحالية، هل تريد استبدالها بالفاتورة المعلقة؟',
+        { confirmText: 'نعم، استبدال السلة', cancelText: 'إلغاء' }
+      );
+      if (!confirmed) {
         return;
       }
     }
@@ -609,6 +620,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
     setDocMode(hold.mode);
     setSuspendedCarts(prev => prev.filter(h => h.id !== hold.id));
     setShowSuspendedModal(false);
+    showToast(`تم استرجاع فاتورة (${hold.customerName}) بنجاح إلى شاشة الكاشير`);
     setFeedback({ type: 'success', text: `تم استرجاع فاتورة (${hold.customerName}) بنجاح إلى شاشة الكاشير` });
     setTimeout(() => setFeedback(null), 3000);
   };
@@ -697,15 +709,20 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
     // Credit validation - strict check
     if (docMode === 'SALE' && (paymentType === 'CREDIT' || remainingAmount > 0)) {
       if (!canCredit) {
-        alert('ليس لديك صلاحية البيع بالآجل أو تسجيل متبقي على الحساب!');
+        showWarning('غير مصرح', 'ليس لديك صلاحية البيع بالآجل أو تسجيل متبقي على الحساب!');
         return;
       }
       if (!selectedCustomerId || selectedCustomerId === 'WALK_IN') {
-        alert('ممنوع البيع الآجل أو تسجيل متبقي على الحساب بدون اختيار عميل مسجل من القائمة!');
+        showWarning('عميل غير محدد', 'ممنوع البيع الآجل أو تسجيل متبقي على الحساب بدون اختيار عميل مسجل من القائمة!');
         return;
       }
       if (cust && cust.credit_limit > 0 && (Number(cust.balance) + remainingAmount) > cust.credit_limit) {
-        if (!window.confirm(`تنبيه: مديونية العميل بعد هذه الفاتورة (${(Number(cust.balance) + remainingAmount).toLocaleString()} ج.م) ستتجاوز الحد الائتماني المسموح به (${cust.credit_limit.toLocaleString()} ج.م). هل تريد المتابعة؟`)) {
+        const confirmed = await showConfirm(
+          'تجاوز الحد الائتماني',
+          `تنبيه: مديونية العميل بعد هذه الفاتورة (${(Number(cust.balance) + remainingAmount).toLocaleString()} ج.م) ستتجاوز الحد الائتماني المسموح به (${cust.credit_limit.toLocaleString()} ج.م). هل تريد المتابعة؟`,
+          { isDanger: true, confirmText: 'نعم، متابعة البيع', cancelText: 'إلغاء' }
+        );
+        if (!confirmed) {
           return;
         }
       }
@@ -768,18 +785,23 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
           console.error(e);
         }
 
-        // Ask for print
-        if (window.confirm(`تم حفظ ${isQuo ? 'عرض السعر' : 'فاتورة المبيعات'} برقم (${docRef}) بنجاح!\n\nهل ترغب في طباعة الإيصال الآن؟`)) {
-          handlePrintThermalReceipt(savedInvoiceObj);
-        }
-
         clearCart();
         loadMasterData();
+
+        // Ask for print with SweetAlert2
+        const wantPrint = await showConfirm(
+          'تم الحفظ بنجاح',
+          `تم حفظ ${isQuo ? 'عرض السعر' : 'فاتورة المبيعات'} برقم (${docRef}) بنجاح!\nهل ترغب في طباعة الإيصال الآن؟`,
+          { confirmText: 'طباعة الإيصال', cancelText: 'لاحقاً', icon: 'success' }
+        );
+        if (wantPrint) {
+          handlePrintThermalReceipt(savedInvoiceObj);
+        }
       } else {
-        alert(data.message || 'فشل حفظ الفاتورة');
+        showError('فشل الحفظ', data.message || 'فشل حفظ الفاتورة');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     } finally {
       setSubmitting(false);
     }
@@ -787,10 +809,10 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
 
   // Print Thermal 80mm Receipt
   const handlePrintThermalReceipt = (inv: any) => {
-    const compName = companyProfile?.company_name || 'دراجون للأنظمة والحلول المتكاملة';
-    const compPhones = companyProfile?.phones || '01050016289';
-    const compAddress = companyProfile?.address || 'القاهرة - المقر الرئيسي';
-    const compFooter = companyProfile?.invoice_footer || 'شكراً لتعاملكم معنا';
+    const compName = companyProfile?.company_name || '';
+    const compPhones = companyProfile?.phones || '';
+    const compAddress = companyProfile?.address || '';
+    const compFooter = companyProfile?.invoice_footer || '';
     const isQuo = inv.status === 'QUOTATION';
 
     const html = `
@@ -875,10 +897,10 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
 
   // Export Quotation to A4 PDF
   const handleExportQuotationA4PDF = (inv: any) => {
-    const compName = companyProfile?.company_name || 'دراجون للأنظمة والحلول المتكاملة';
-    const compPhones = companyProfile?.phones || '01050016289';
-    const compAddress = companyProfile?.address || 'القاهرة - المقر الرئيسي';
-    const compFooter = companyProfile?.invoice_footer || 'يسري هذا العرض لمدة 15 يوماً من تاريخ إصداره.';
+    const compName = companyProfile?.company_name || '';
+    const compPhones = companyProfile?.phones || '';
+    const compAddress = companyProfile?.address || '';
+    const compFooter = companyProfile?.invoice_footer || '';
 
     const tableHtml = `
       <div style="font-family: 'Cairo', sans-serif; padding: 20px; direction: rtl; color: #1e293b;">
@@ -990,10 +1012,15 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
   // Process Return of a Sales Invoice
   const handleReturnInvoice = async (doc: any) => {
     if (!canReturn) {
-      alert('ليس لديك صلاحية عمل مرتجع مبيعات!');
+      showWarning('غير مصرح', 'ليس لديك صلاحية عمل مرتجع مبيعات!');
       return;
     }
-    if (!window.confirm(`هل أنت متأكد من عمل مرتجع كامل لفاتورة المبيعات رقم (${doc.invoice_number}) بقيمة (${Number(doc.net_total).toLocaleString()} ج.م) وإعادة الأصناف إلى المخزن؟`)) {
+    const confirmed = await showConfirm(
+      'تأكيد مرتجع المبيعات',
+      `هل أنت متأكد من عمل مرتجع كامل لفاتورة المبيعات رقم (${doc.invoice_number}) بقيمة (${Number(doc.net_total).toLocaleString()} ج.م) وإعادة الأصناف إلى المخزن؟`,
+      { isDanger: true, confirmText: 'نعم، تأكيد المرتجع', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) {
       return;
     }
 
@@ -1005,14 +1032,14 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
       });
       const data = await res.json();
       if (data.success) {
-        alert(data.message);
+        showSuccess('تم إتمام المرتجع', data.message || 'تم عمل مرتجع الفاتورة وتحديث المخزن بنجاح');
         handleOpenHistory();
         loadMasterData();
       } else {
-        alert(data.message || 'فشل إتمام المرتجع');
+        showError('فشل المرتجع', data.message || 'فشل إتمام المرتجع');
       }
     } catch (err: any) {
-      alert('حدث خطأ أثناء الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     } finally {
       setLoading(false);
     }
@@ -2546,9 +2573,15 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm(`هل أنت متأكد من حذف الفاتورة المعلقة رقم #${idx + 1}؟`)) {
+                        onClick={async () => {
+                          const confirmed = await showConfirm(
+                            'حذف الفاتورة المعلقة',
+                            `هل أنت متأكد من حذف الفاتورة المعلقة رقم #${idx + 1}؟`,
+                            { isDanger: true, confirmText: 'نعم، حذف', cancelText: 'إلغاء' }
+                          );
+                          if (confirmed) {
                             setSuspendedCarts(prev => prev.filter(h => h.id !== hold.id));
+                            showToast('تم حذف الفاتورة المعلقة');
                           }
                         }}
                         className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"

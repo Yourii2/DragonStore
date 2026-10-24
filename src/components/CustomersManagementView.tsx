@@ -21,10 +21,10 @@ import {
   DollarSign,
   Calendar,
   Layers,
-  Building
 } from 'lucide-react';
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 export interface CustomerItem {
   id: string;
@@ -147,7 +147,7 @@ export const CustomersManagementView: React.FC = () => {
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.phone.trim()) {
-      alert('يرجى إدخال اسم العميل ورقم الهاتف');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم العميل ورقم الهاتف');
       return;
     }
 
@@ -171,35 +171,45 @@ export const CustomersManagementView: React.FC = () => {
         setShowAddEditModal(false);
         setEditingCustomer(null);
         setFormData({ name: '', phone: '', address: '', balance: 0 });
+        showToast(editingCustomer ? 'تم تحديث بيانات العميل بنجاح' : 'تمت إضافة العميل بنجاح');
         fetchCustomers();
       } else {
-        alert(data.message || 'فشل حفظ بيانات العميل');
+        showError('فشل الحفظ', data.message || 'فشل حفظ بيانات العميل');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال', err.message);
     }
   };
 
   // Delete Customer
   const handleDeleteCustomer = async (cust: CustomerItem) => {
     if (Math.abs(cust.balance) > 0) {
-      alert(`لا يمكن حذف العميل (${cust.name}) لأن حسابه الحالي غير مصفى (الرصيد: ${cust.balance.toLocaleString()} ج.م). يجب تصفية الحساب أولاً.`);
+      showWarning(
+        'لا يمكن حذف العميل',
+        `لا يمكن حذف العميل (${cust.name}) لأن حسابه الحالي غير مصفى (الرصيد: ${cust.balance.toLocaleString()} ج.م). يجب تصفية الحساب أولاً.`
+      );
       return;
     }
 
-    if (!window.confirm(`هل أنت متأكد من حذف العميل: "${cust.name}"؟`)) return;
+    const confirmed = await showConfirm(
+      'تأكيد حذف العميل',
+      `هل أنت متأكد من رغبتك في حذف العميل: "${cust.name}" نهائياً من النظام؟`,
+      { isDanger: true, confirmText: 'نعم، حذف العميل', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/customers/${cust.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
+        showToast('تم حذف العميل بنجاح');
         fetchCustomers();
       } else {
-        alert(data.message || 'فشل حذف العميل');
+        showError('فشل الحذف', data.message || 'فشل حذف العميل');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('فشل حذف العميل');
+      showError('خطأ أثناء الحذف', err.message);
     }
   };
 

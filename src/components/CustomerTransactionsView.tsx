@@ -20,6 +20,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import SearchableSelect from './SearchableSelect';
+import { showSuccess, showError, showWarning, showToast } from '../utils/swal';
 
 export interface CustomerOption {
   id: string;
@@ -119,7 +120,7 @@ export const CustomerTransactionsView: React.FC = () => {
   const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!txForm.customer_id || !txForm.amount) {
-      alert('يرجى اختيار العميل وتحديد المبلغ');
+      showWarning('بيانات غير مكتملة', 'يرجى اختيار العميل وتحديد المبلغ');
       return;
     }
 
@@ -156,13 +157,14 @@ export const CustomerTransactionsView: React.FC = () => {
           payment_method: 'CASH',
           notes: ''
         });
+        showToast('تم تسجيل معاملة العميل وتحديث الرصيد بنجاح');
         fetchTransactions();
         fetchCustomers();
       } else {
-        alert(data.message || 'فشل تسجيل المعاملة');
+        showError('فشل الحفظ', data.message || 'فشل تسجيل المعاملة');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     }
   };
 

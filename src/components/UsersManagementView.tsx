@@ -21,6 +21,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import SearchableSelect from './SearchableSelect';
+import { showSuccess, showError, showWarning, showConfirm, showToast } from '../utils/swal';
 
 export interface UserRecord {
   id: number;
@@ -146,26 +147,26 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
     e.preventDefault();
 
     if (!formData.full_name.trim()) {
-      alert('يرجى إدخال اسم المستخدم الذي يظهر على النظام');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم المستخدم الذي يظهر على النظام');
       return;
     }
     if (!formData.username.trim()) {
-      alert('يرجى إدخال اسم تسجيل الدخول');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم تسجيل الدخول');
       return;
     }
 
     if (!editingUser) {
       if (!formData.password) {
-        alert('يرجى إدخال كلمة السر للمستخدم الجديد');
+        showWarning('بيانات غير مكتملة', 'يرجى إدخال كلمة السر للمستخدم الجديد');
         return;
       }
       if (formData.password !== formData.confirmPassword) {
-        alert('كلمة السر وتأكيد كلمة السر غير متطابقين!');
+        showWarning('خطأ في كلمة المرور', 'كلمة السر وتأكيد كلمة السر غير متطابقين!');
         return;
       }
     } else {
       if (formData.password && formData.password !== formData.confirmPassword) {
-        alert('كلمة السر وتأكيد كلمة السر غير متطابقين!');
+        showWarning('خطأ في كلمة المرور', 'كلمة السر وتأكيد كلمة السر غير متطابقين!');
         return;
       }
     }
@@ -188,12 +189,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
       const data = await res.json();
       if (data.success) {
         setShowAddEditModal(false);
+        showToast(editingUser ? 'تم تحديث بيانات المستخدم بنجاح' : 'تم إنشاء المستخدم بنجاح');
         await fetchUsers();
       } else {
-        alert(data.message || 'فشل حفظ بيانات المستخدم');
+        showError('فشل الحفظ', data.message || 'فشل حفظ بيانات المستخدم');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال بالخادم: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     }
   };
 
@@ -202,12 +204,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
     if (u.role === 'SUPER_ADMIN') {
       const superAdmins = users.filter(x => x.role === 'SUPER_ADMIN');
       if (superAdmins.length <= 1) {
-        alert('لا يمكن حذف حساب المدير العام الرئيسي للنظام!');
+        showWarning('إجراء غير مسموح', 'لا يمكن حذف حساب المدير العام الرئيسي للنظام!');
         return;
       }
     }
 
-    if (!window.confirm(`هل أنت متأكد من حذف المستخدم (${u.full_name} - ${u.username})؟`)) {
+    const confirmed = await showConfirm(
+      'تأكيد حذف المستخدم',
+      `هل أنت متأكد من حذف المستخدم (${u.full_name} - ${u.username}) نهائياً؟`,
+      { isDanger: true, confirmText: 'نعم، حذف المستخدم', cancelText: 'إلغاء' }
+    );
+    if (!confirmed) {
       return;
     }
 
@@ -215,12 +222,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ onNavi
       const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
+        showToast('تم حذف المستخدم بنجاح');
         await fetchUsers();
       } else {
-        alert(data.message || 'فشل حذف المستخدم');
+        showError('فشل الحذف', data.message || 'فشل حذف المستخدم');
       }
     } catch (err: any) {
-      alert('خطأ أثناء الحذف: ' + err.message);
+      showError('خطأ أثناء الحذف', err.message);
     }
   };
 

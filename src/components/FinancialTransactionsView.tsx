@@ -23,6 +23,7 @@ import {
 import { printTableOrReceipt, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import { DateFilterBar, DateShortcut } from './DateFilterBar';
 import SearchableSelect from './SearchableSelect';
+import { showSuccess, showError, showWarning, showToast } from '../utils/swal';
 
 export interface AccountOption {
   id: string;
@@ -143,12 +144,12 @@ export const FinancialTransactionsView: React.FC = () => {
   const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!txForm.account_id || !txForm.amount) {
-      alert('يرجى اختيار الخزينة وتحديد المبلغ');
+      showWarning('بيانات غير مكتملة', 'يرجى اختيار الخزينة وتحديد المبلغ');
       return;
     }
 
     if (txForm.flow === 'TRANSFER' && (!txForm.to_account_id || txForm.to_account_id === txForm.account_id)) {
-      alert('يرجى تحديد خزينة أخرى محول إليها');
+      showWarning('بيانات غير مكتملة', 'يرجى تحديد خزينة أخرى محول إليها');
       return;
     }
 
@@ -195,13 +196,14 @@ export const FinancialTransactionsView: React.FC = () => {
           payment_method: 'CASH',
           notes: ''
         });
+        showToast('تم تسجيل المعاملة المالية وتحديث الأرصدة بنجاح');
         fetchTransactions();
         fetchAccounts();
       } else {
-        alert(data.message || 'فشل تسجيل المعاملة المالية');
+        showError('فشل الحفظ', data.message || 'فشل تسجيل المعاملة المالية');
       }
     } catch (err: any) {
-      alert('خطأ في الاتصال: ' + err.message);
+      showError('خطأ في الاتصال بالخادم', err.message);
     }
   };
 
