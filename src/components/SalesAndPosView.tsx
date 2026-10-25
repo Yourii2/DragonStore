@@ -364,7 +364,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
   const handleSelectProduct = (product: Product) => {
     // If out of stock and in Sale mode, alert
     if (docMode === 'SALE' && Number(product.current_stock || 0) <= 0) {
-      alert(`المنتج (${product.name}) غير متوفر حالياً في المخزن (الرصيد: 0)`);
+      showWarning('نفاد الكمية', `المنتج (${product.name}) غير متوفر حالياً في المخزن (الرصيد: 0)`);
       return;
     }
 
@@ -403,7 +403,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
         const item = prev[idx];
         const nextQty = item.quantity + 1;
         if (docMode === 'SALE' && nextQty > product.current_stock) {
-          alert(`لا يمكن إضافة كمية أكبر من الرصيد المتوفر بالمخزن (${product.current_stock})`);
+          showWarning('تجاوز الرصيد', `لا يمكن إضافة كمية أكبر من الرصيد المتوفر بالمخزن (${product.current_stock})`);
           return prev;
         }
         const updated = [...prev];
@@ -472,7 +472,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
 
     const prod = products.find(p => p.id === productId);
     if (docMode === 'SALE' && prod && newQty > prod.current_stock) {
-      alert(`الكمية المطلوبة تتجاوز الرصيد المتوفر (${prod.current_stock})`);
+      showWarning('تجاوز الرصيد', `الكمية المطلوبة تتجاوز الرصيد المتوفر (${prod.current_stock})`);
       return;
     }
 
@@ -676,7 +676,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
         if (canReturn) {
           handleOpenReturnModal();
         } else {
-          alert('ليس لديك صلاحية عمل مرتجع مبيعات');
+          showWarning('غير مصرح', 'ليس لديك صلاحية عمل مرتجع مبيعات');
         }
       } else if (e.key === 'F8') {
         e.preventDefault();
@@ -694,12 +694,12 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
   // Submit Sale Invoice or Quotation
   const handleSubmitInvoice = async () => {
     if (cart.length === 0) {
-      alert('السلة فارغة، يرجى إضافة منتجات أولاً');
+      showWarning('السلة فارغة', 'السلة فارغة، يرجى إضافة منتجات أولاً');
       return;
     }
 
     if (docMode === 'SALE' && !canSale) {
-      alert('ليس لديك صلاحية بيع أو إصدار فواتير مبيعات');
+      showWarning('غير مصرح', 'ليس لديك صلاحية بيع أو إصدار فواتير مبيعات');
       return;
     }
 
@@ -980,7 +980,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
   // Convert Quotation to Active Invoice
   const handleConvertQuotationToSale = (quotation: any) => {
     if (!canSale) {
-      alert('ليس لديك صلاحية بيع أو إصدار فواتير مبيعات لتحويل عرض السعر إليها');
+      showWarning('غير مصرح', 'ليس لديك صلاحية بيع أو إصدار فواتير مبيعات لتحويل عرض السعر إليها');
       return;
     }
     setDocMode('SALE');
@@ -1109,7 +1109,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
             type="button"
             onClick={() => {
               if (!canReturn) {
-                alert('ليس لديك صلاحية عمل مرتجع مبيعات!');
+                showWarning('غير مصرح', 'ليس لديك صلاحية عمل مرتجع مبيعات!');
                 return;
               }
               handleOpenReturnModal();
@@ -1827,7 +1827,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
                         onChange={e => {
                           const val = Number(e.target.value);
                           if (!canCredit && val < netTotal) {
-                            alert('ليس لديك صلاحية البيع بالآجل أو تسجيل متبقي. يجب تحصيل كامل المبلغ.');
+                            showWarning('غير مصرح', 'ليس لديك صلاحية البيع بالآجل أو تسجيل متبقي. يجب تحصيل كامل المبلغ.');
                             return;
                           }
                           setPaidAmount(val);
@@ -1871,7 +1871,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
                 type="button"
                 onClick={() => {
                   if (!canReturn) {
-                    alert('ليس لديك صلاحية عمل مرتجع مبيعات!');
+                    showWarning('غير مصرح', 'ليس لديك صلاحية عمل مرتجع مبيعات!');
                     return;
                   }
                   handleOpenReturnModal();

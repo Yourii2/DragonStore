@@ -25,6 +25,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
+import { showWarning } from '../utils/swal';
 
 
 export type ReportType = 
@@ -135,7 +136,7 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
   // Handle Export to CSV/Excel
   const handleExportCSV = () => {
     if (!reportData || !reportData.rows || reportData.rows.length === 0) {
-      alert('لا توجد بيانات متاحة للتصدير');
+      showWarning('لا توجد بيانات', 'لا توجد بيانات متاحة للتصدير');
       return;
     }
 

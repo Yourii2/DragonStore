@@ -102,7 +102,7 @@ export const ConnectionSettingsView: React.FC = () => {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert('خطأ أثناء تصدير قاعدة البيانات: ' + err.message);
+      showError('خطأ أثناء التصدير', 'خطأ أثناء تصدير قاعدة البيانات: ' + err.message);
     } finally {
       setExporting(false);
     }

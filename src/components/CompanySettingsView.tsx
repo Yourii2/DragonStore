@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 import SearchableSelect from './SearchableSelect';
-import { showSuccess, showError } from '../utils/swal';
+import { showSuccess, showError, showWarning } from '../utils/swal';
 
 const FOOTER_EXAMPLES = [
   'شكراً لتعاملكم معنا - نسعد دائماً بخدمتكم ورضاكم غايتنا.',
@@ -97,7 +97,7 @@ export const CompanySettingsView: React.FC = () => {
   const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.company_name.trim()) {
-      alert('يرجى إدخال اسم الشركة');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم الشركة');
       return;
     }
 

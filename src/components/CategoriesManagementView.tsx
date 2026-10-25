@@ -576,7 +576,7 @@ export const CategoriesManagementView: React.FC = () => {
                             const compressed = await compressImageFile(file, 300, 300, 0.75);
                             setFormData({ ...formData, image_url: compressed });
                           } catch (err: any) {
-                            alert(err.message || 'فشل ضغط الصورة');
+                            showError('فشل ضغط الصورة', err.message || 'فشل ضغط الصورة');
                           }
                         }
                       }}

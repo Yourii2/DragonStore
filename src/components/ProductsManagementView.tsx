@@ -329,7 +329,7 @@ export const ProductsManagementView: React.FC = () => {
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productForm.name.trim()) {
-      alert('يرجى إدخال اسم المنتج');
+      showWarning('بيانات غير مكتملة', 'يرجى إدخال اسم المنتج');
       return;
     }
 
@@ -984,7 +984,7 @@ export const ProductsManagementView: React.FC = () => {
                             const compressed = await compressImageFile(file, 400, 400, 0.72);
                             setProductForm({ ...productForm, image_data: compressed });
                           } catch (err: any) {
-                            alert(err.message || 'فشل ضغط الصورة');
+                            showError('فشل ضغط الصورة', err.message || 'فشل ضغط الصورة');
                           }
                         }
                       }}
@@ -1342,7 +1342,7 @@ export const ProductsManagementView: React.FC = () => {
                             const compressed = await compressImageFile(file, 250, 250, 0.7);
                             setNewCatImage(compressed);
                           } catch (err: any) {
-                            alert(err.message || 'فشل ضغط الصورة');
+                            showError('فشل ضغط الصورة', err.message || 'فشل ضغط الصورة');
                           }
                         }
                       }}
