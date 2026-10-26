@@ -37,11 +37,16 @@ if %errorlevel% neq 0 (
 )
 echo.
 
-echo [2/3] Starting Dragon Store Application Server...
+echo [2/3] Starting Dragon Store Application Server (Preview Mode)...
 echo Host URL: http://localhost:3000
 echo.
 
-start "DragonStore Backend Engine" cmd /k "cd /d "%SCRIPT_DIR%" && npm run dev"
+if not exist "%SCRIPT_DIR%\dist\index.html" (
+    echo [INFO] Production bundle not found. Building application first...
+    call npm run build
+)
+
+start "DragonStore Backend Engine" cmd /k "cd /d "%SCRIPT_DIR%" && npm run preview"
 
 echo [3/3] Waiting for server to initialize...
 timeout /t 3 /nobreak >nul

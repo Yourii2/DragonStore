@@ -4219,9 +4219,11 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
-// Setup Vite development or production static files
+// Setup Vite development or production/preview static files
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  const isPreview = process.env.NODE_ENV === 'production' || process.argv.includes('--production') || process.argv.includes('--preview');
+  if (!isPreview) {
+    console.log('⚡ Starting in DEVELOPMENT mode (Vite HMR)');
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
@@ -4237,6 +4239,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
+    console.log('🚀 Starting in PREVIEW / PRODUCTION mode (Serving optimized dist bundle)');
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
