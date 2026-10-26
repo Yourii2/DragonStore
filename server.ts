@@ -151,6 +151,8 @@ app.get('/api/settings/connection', (req, res) => {
 // Update Connection Settings & Test Connection
 app.post('/api/settings/connection', async (req, res) => {
   const { host, port, database, username, password } = req.body;
+  const targetDb = database && typeof database === 'string' ? database.trim() : '';
+
   try {
     // 1. Test connecting to MySQL server directly without forcing database to exist yet
     const conn = await mysql.createConnection({
@@ -164,13 +166,13 @@ app.post('/api/settings/connection', async (req, res) => {
     // 2. If database name is supplied, ensure it exists or create it automatically
     let createdNew = false;
     let tablesCount = 0;
-    if (database) {
-      const [dbRows]: any = await conn.query(`SHOW DATABASES LIKE '${database.replace(/'/g, "\\'")}'`);
+    if (targetDb) {
+      const [dbRows]: any = await conn.query(`SHOW DATABASES LIKE '${targetDb.replace(/'/g, "\\'")}'`);
       if (!dbRows || dbRows.length === 0) {
-        await conn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+        await conn.query(`CREATE DATABASE IF NOT EXISTS \`${targetDb}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
         createdNew = true;
       } else {
-        const [tables]: any = await conn.query(`SHOW TABLES FROM \`${database}\``);
+        const [tables]: any = await conn.query(`SHOW TABLES FROM \`${targetDb}\``);
         tablesCount = Array.isArray(tables) ? tables.length : 0;
       }
     }
@@ -182,7 +184,7 @@ app.post('/api/settings/connection', async (req, res) => {
       config.dbConfig = {
         host: host || 'localhost',
         port: Number(port) || 3306,
-        database: database || 'dragon_erp_production',
+        database: targetDb || 'dragon_erp_production',
         user: username || 'root',
         password: password !== undefined ? password : '',
         charset: 'utf8mb4'
@@ -191,9 +193,11 @@ app.post('/api/settings/connection', async (req, res) => {
       resetPool();
     }
 
-    const successMessage = createdNew
-      ? `تم الاتصال بالخادم بنجاح وإنشاء قاعدة البيانات "${database}" تلقائياً لأنها لم تكن موجودة!`
-      : `تم الاتصال بنجاح بقاعدة البيانات "${database}" (${tablesCount === 0 ? 'فارغة وجاهزة للتنصيب' : `تحتوي على ${tablesCount} جدول`})`;
+    const successMessage = targetDb
+      ? (createdNew
+        ? `تم الاتصال بالخادم بنجاح وإنشاء قاعدة البيانات "${targetDb}" تلقائياً لأنها لم تكن موجودة!`
+        : `تم الاتصال بنجاح بقاعدة البيانات "${targetDb}" (${tablesCount === 0 ? 'فارغة وجاهزة للتنصيب' : `تحتوي على ${tablesCount} جدول`})`)
+      : 'تم الاتصال بخادم MySQL بنجاح!';
 
     res.json({ 
       success: true, 
@@ -202,7 +206,19 @@ app.post('/api/settings/connection', async (req, res) => {
       tablesCount 
     });
   } catch (err: any) {
-    res.status(400).json({ success: false, message: 'فشل الاتصال بقاعدة البيانات: ' + err.message });
+    let friendlyMessage = err.message || 'فشل الاتصال';
+    if (err.code === 'ER_ACCESS_DENIED_ERROR') {
+      if (err.message && err.message.includes('using password: NO')) {
+        friendlyMessage = 'خادم MySQL يتطلب كلمة مرور (يرجى إدخال كلمة مرور مستخدم root).';
+      } else {
+        friendlyMessage = 'اسم المستخدم أو كلمة المرور غير صحيحة.';
+      }
+    } else if (err.code === 'ECONNREFUSED') {
+      friendlyMessage = `تعذر الوصول إلى خادم MySQL على (${host || 'localhost'}:${port || 3306}). تأكد من تشغيل خادم MySQL عبر XAMPP أو كخدمة في النظام.`;
+    } else if (err.code === 'ENOTFOUND') {
+      friendlyMessage = `عنوان الخادم (${host}) غير صحيح أو تعذر الوصول إليه.`;
+    }
+    res.status(400).json({ success: false, message: 'فشل الاتصال بقاعدة البيانات: ' + friendlyMessage, originalError: err.message });
   }
 });
 
@@ -925,17 +941,18 @@ app.post('/api/system/test-db', async (req, res) => {
 app.post('/api/system/install', async (req, res) => {
   const { databaseConfig, businessConfig, companyConfig, defaultsConfig, adminAccount, backupData } = req.body;
   try {
+    const dbName = (databaseConfig && databaseConfig.database && databaseConfig.database.trim()) || 'dragon_erp_production';
     const conn = await mysql.createConnection({
-      host: databaseConfig.host || 'localhost',
-      port: Number(databaseConfig.port) || 3306,
-      user: databaseConfig.username || 'root',
-      password: databaseConfig.password !== undefined ? databaseConfig.password : '',
+      host: databaseConfig?.host || 'localhost',
+      port: Number(databaseConfig?.port) || 3306,
+      user: databaseConfig?.username || 'root',
+      password: databaseConfig?.password !== undefined ? databaseConfig.password : '',
       multipleStatements: true
     });
 
     // 1. Create DB if not exists
-    await conn.query(`CREATE DATABASE IF NOT EXISTS \`${databaseConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-    await conn.query(`USE \`${databaseConfig.database}\``);
+    await conn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    await conn.query(`USE \`${dbName}\``);
 
     // 2. Run DDL Statements
     const statements = INIT_MYSQL_TABLES_SQL.split(';')
@@ -1053,11 +1070,11 @@ app.post('/api/system/install', async (req, res) => {
       isInstalled: true,
       installedAt: new Date().toISOString(),
       dbConfig: {
-        host: databaseConfig.host || 'localhost',
-        port: Number(databaseConfig.port) || 3306,
-        database: databaseConfig.database,
-        user: databaseConfig.username || 'root',
-        password: databaseConfig.password || '',
+        host: databaseConfig?.host || 'localhost',
+        port: Number(databaseConfig?.port) || 3306,
+        database: dbName,
+        user: databaseConfig?.username || 'root',
+        password: databaseConfig?.password || '',
         charset: 'utf8mb4'
       }
     };

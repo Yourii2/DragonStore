@@ -48,7 +48,7 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
   const [dbConfig, setDbConfig] = useState({
     host: 'localhost',
     port: 3306,
-    database: '',
+    database: 'dragon_erp_production',
     username: 'root',
     password: ''
   });
@@ -111,6 +111,10 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
 
   // Test Database Connection
   const handleTestDatabase = async (): Promise<boolean> => {
+    if (!dbConfig.database.trim()) {
+      setDbStatus({ type: 'error', text: 'يرجى إدخال اسم قاعدة البيانات أولاً' });
+      return false;
+    }
     setTestingDb(true);
     setDbStatus(null);
     try {
@@ -436,6 +440,9 @@ export const InstallationWizard: React.FC<InstallationWizardProps> = ({ onComple
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
                     placeholder="اتركه فارغاً إذا لم تكن هناك كلمة مرور"
                   />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    إذا كان خادم MySQL لديك محمي بكلمة مرور (مثل السيرفر المثبت مسبقاً)، يرجى كتابتها هنا. إذا كنت تستخدم XAMPP الافتراضي فغالباً ما يكون فارغاً.
+                  </p>
                 </div>
               </div>
 
