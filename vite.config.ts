@@ -83,10 +83,7 @@ export default defineConfig(() => {
       }
     },
     server: {
-      allowedHosts: [
-        'sales.dragon-systems.online',
-        '.dragon-systems.online',
-      ],
+      allowedHosts: true,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {
         ignored: [
@@ -98,10 +95,7 @@ export default defineConfig(() => {
     },
     preview: {
       port: 3000,
-      allowedHosts: [
-        'sales.dragon-systems.online',
-        '.dragon-systems.online',
-      ],
+      allowedHosts: true,
     },
   };
 });

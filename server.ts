@@ -4225,8 +4225,10 @@ async function startServer() {
   if (!isPreview) {
     console.log('⚡ Starting in DEVELOPMENT mode (Vite HMR)');
     const vite = await createViteServer({
+      configFile: path.resolve(__dirname, 'vite.config.ts'),
       server: { 
         middlewareMode: true,
+        allowedHosts: true,
         watch: {
           ignored: [
             '**/db_config.json',
