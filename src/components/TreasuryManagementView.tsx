@@ -77,6 +77,7 @@ export const TreasuryManagementView: React.FC = () => {
     name: '',
     type: 'CASH',
     balance: 0,
+    keeper_name: 'المدير المالي',
     notes: ''
   });
 
@@ -168,6 +169,7 @@ export const TreasuryManagementView: React.FC = () => {
         name: formData.name.trim(),
         type: formData.type,
         balance: Number(formData.balance) || 0,
+        keeper_name: formData.keeper_name.trim() || 'المدير المالي',
         notes: formData.notes.trim() || undefined
       };
 
@@ -184,6 +186,7 @@ export const TreasuryManagementView: React.FC = () => {
           name: '',
           type: 'CASH',
           balance: 0,
+          keeper_name: 'المدير المالي',
           notes: ''
         });
         showToast(editingAccount ? 'تم تحديث بيانات الخزينة بنجاح' : 'تمت إضافة الخزينة بنجاح');
@@ -352,6 +355,7 @@ export const TreasuryManagementView: React.FC = () => {
                 name: '',
                 type: 'CASH',
                 balance: 0,
+                keeper_name: 'المدير المالي',
                 notes: ''
               });
               setShowAddEditModal(true);
@@ -540,6 +544,7 @@ export const TreasuryManagementView: React.FC = () => {
                               name: a.name,
                               type: a.type || 'CASH',
                               balance: a.balance,
+                              keeper_name: a.keeper_name || 'المدير المالي',
                               notes: a.notes || ''
                             });
                             setShowAddEditModal(true);
@@ -631,6 +636,19 @@ export const TreasuryManagementView: React.FC = () => {
                   value={formData.balance}
                   onChange={(e) => setFormData({ ...formData, balance: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  المسؤول / أمين الخزينة:
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: المدير المالي، كاشير الوردية الصباحية..."
+                  value={formData.keeper_name}
+                  onChange={(e) => setFormData({ ...formData, keeper_name: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-bold"
                 />
               </div>
 

@@ -2451,19 +2451,48 @@ app.post('/api/accounts', async (req, res) => {
     const id = a.id || `acc_${Date.now()}`;
     const code = a.account_code || a.code || `11${Date.now().toString().slice(-2)}`;
     const balance = Number(a.balance || 0);
+    const keeperName = a.keeper_name || a.keeperName || 'المدير المالي';
 
-    await pool.query(
-      `INSERT INTO accounts (id, account_code, name, type, unit, balance, keeper_name, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         account_code = VALUES(account_code), name = VALUES(name), type = VALUES(type),
-         unit = VALUES(unit), balance = VALUES(balance), keeper_name = VALUES(keeper_name),
-         notes = VALUES(notes)`,
-      [
-        id, code, a.name, a.type || 'ASSET', a.unit || 'BOTH', balance,
-        a.keeper_name || a.keeperName || 'المدير المالي', a.notes || ''
-      ]
-    );
+    // Ensure keeper_name column exists in accounts
+    try {
+      const [cols]: any = await pool.query("SHOW COLUMNS FROM accounts LIKE 'keeper_name'");
+      if (cols.length === 0) {
+        await pool.query("ALTER TABLE accounts ADD COLUMN keeper_name VARCHAR(150) NULL DEFAULT 'المدير المالي' AFTER balance");
+      }
+    } catch (e: any) {
+      console.warn('Accounts keeper_name check notice:', e.message);
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO accounts (id, account_code, name, type, unit, balance, keeper_name, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           account_code = VALUES(account_code), name = VALUES(name), type = VALUES(type),
+           unit = VALUES(unit), balance = VALUES(balance), keeper_name = VALUES(keeper_name),
+           notes = VALUES(notes)`,
+        [
+          id, code, a.name, a.type || 'ASSET', a.unit || 'BOTH', balance,
+          keeperName, a.notes || ''
+        ]
+      );
+    } catch (insertErr: any) {
+      if (insertErr.message && insertErr.message.includes('keeper_name')) {
+        await pool.query(
+          `INSERT INTO accounts (id, account_code, name, type, unit, balance, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             account_code = VALUES(account_code), name = VALUES(name), type = VALUES(type),
+             unit = VALUES(unit), balance = VALUES(balance), notes = VALUES(notes)`,
+          [
+            id, code, a.name, a.type || 'ASSET', a.unit || 'BOTH', balance,
+            a.notes || ''
+          ]
+        );
+      } else {
+        throw insertErr;
+      }
+    }
     res.json({ success: true, id, message: 'تم حفظ بيانات الخزينة بنجاح' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -2756,119 +2785,6 @@ app.get('/api/expenses/categories', async (req, res) => {
   }
 });
 
-// Sales & POS Invoicing (With Double-entry & Stock Update in MySQL)
-app.get('/api/sales', async (req, res) => {
-  const pool = getPool();
-  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
-  try {
-    const [rows] = await pool.query('SELECT * FROM sales_invoices ORDER BY date DESC');
-    res.json({ success: true, data: rows });
-  } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.post('/api/sales', async (req, res) => {
-  const pool = getPool();
-  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
-
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-
-    const inv = req.body;
-    const invoiceId = `inv-${Date.now()}`;
-    const journalId = `JV-${Date.now().toString().slice(-4)}`;
-
-    // Insert invoice
-    await connection.query(
-      `INSERT INTO sales_invoices (id, invoice_number, date, customer_id, customer_name, business_unit_id, items, subtotal, discount, net_total, cogs_total, gross_profit, payment_type, paid_amount, remaining_amount, status, journal_entry_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        invoiceId, inv.invoice_number, inv.date, inv.customer_id, inv.customer_name,
-        inv.business_unit_id || 1, JSON.stringify(inv.items), inv.subtotal, inv.discount || 0,
-        inv.net_total, inv.cogs_total, inv.gross_profit, inv.payment_type, inv.paid_amount,
-        inv.remaining_amount, 'COMPLETED', journalId
-      ]
-    );
-
-    // Update product stock and serials in MySQL
-    for (const item of inv.items) {
-      await connection.query(
-        'UPDATE products SET current_stock = GREATEST(0, current_stock - ?) WHERE id = ? OR code = ?',
-        [item.quantity, item.product_id, item.product_id]
-      );
-    }
-
-    // Update account or customer debt
-    if (inv.payment_type === 'CASH') {
-      await connection.query('UPDATE accounts SET balance = balance + ? WHERE account_code = "1111"', [inv.paid_amount]);
-    } else if (inv.payment_type === 'INSTAPAY') {
-      await connection.query('UPDATE accounts SET balance = balance + ? WHERE account_code = "1131"', [inv.paid_amount]);
-    } else if (inv.payment_type === 'CREDIT' || inv.remaining_amount > 0) {
-      await connection.query(
-        'UPDATE customers SET balance = balance + ?, total_invoices = total_invoices + 1 WHERE id = ?',
-        [inv.remaining_amount, inv.customer_id]
-      );
-    }
-
-    // Record Journal Entry
-    const jLines = [
-      {
-        account_code: inv.payment_type === 'CASH' ? '1111' : (inv.payment_type === 'INSTAPAY' ? '1131' : '1121'),
-        account_name: inv.payment_type === 'CASH' ? 'صندوق كاشير المحل' : 'حساب بنكي / محفظة إلكترونية',
-        debit: inv.paid_amount,
-        credit: 0
-      },
-      {
-        account_code: '4110',
-        account_name: 'إيرادات مبيعات المتجر والأجهزة',
-        debit: 0,
-        credit: inv.net_total
-      },
-      {
-        account_code: '5110',
-        account_name: 'تكلفة البضاعة المباعة COGS',
-        debit: inv.cogs_total,
-        credit: 0
-      },
-      {
-        account_code: '1210',
-        account_name: 'مخزون بضاعة وأجهزة',
-        debit: 0,
-        credit: inv.cogs_total
-      }
-    ];
-
-    if (inv.remaining_amount > 0) {
-      jLines.push({
-        account_code: '1310',
-        account_name: `ذمم العملاء (${inv.customer_name})`,
-        debit: inv.remaining_amount,
-        credit: 0
-      });
-    }
-
-    await connection.query(
-      `INSERT INTO journal_entries (id, entry_number, date, business_unit_id, description, entry_lines, reference_type, reference_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        journalId, journalId, inv.date, 1,
-        `فاتورة مبيعات ${inv.invoice_number} للعميل ${inv.customer_name}`,
-        JSON.stringify(jLines), 'SALE_INVOICE', invoiceId
-      ]
-    );
-
-    await connection.commit();
-    res.json({ success: true, invoiceId, journalId });
-  } catch (err: any) {
-    await connection.rollback();
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    connection.release();
-  }
-});
-
 // Technical Services & Maintenance
 app.get('/api/services/maintenance', async (req, res) => {
   const pool = getPool();
@@ -3133,7 +3049,7 @@ app.post('/api/sales', async (req, res) => {
     }
 
     const invId = id || `inv-${Date.now()}`;
-    const invNumber = invoice_number || (status === 'QUOTATION' ? `QUO-${Date.now().toString().slice(-6)}` : `INV-${Date.now().toString().slice(-6)}`);
+    const invNumber = invoice_number || (status === 'QUOTATION' ? `QUO-${Date.now().toString().slice(-8)}${Math.floor(10 + Math.random() * 90)}` : `INV-${Date.now().toString().slice(-8)}${Math.floor(10 + Math.random() * 90)}`);
     const invDate = date || new Date().toISOString().slice(0, 10);
     const isQuotation = status === 'QUOTATION';
 
@@ -4265,6 +4181,14 @@ async function startServer() {
           const [cols]: any = await pool.query("SHOW COLUMNS FROM employees LIKE 'salary_cycle'");
           if (cols.length === 0) {
             await pool.query("ALTER TABLE employees ADD COLUMN salary_cycle VARCHAR(50) NOT NULL DEFAULT 'MONTHLY' AFTER base_salary");
+          }
+        } catch {}
+
+        // Ensure keeper_name column exists in accounts
+        try {
+          const [cols]: any = await pool.query("SHOW COLUMNS FROM accounts LIKE 'keeper_name'");
+          if (cols.length === 0) {
+            await pool.query("ALTER TABLE accounts ADD COLUMN keeper_name VARCHAR(150) NULL DEFAULT 'المدير المالي' AFTER balance");
           }
         } catch {}
       }

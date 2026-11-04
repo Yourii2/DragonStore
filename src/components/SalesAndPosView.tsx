@@ -740,7 +740,12 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
       }
     }
 
+    const generatedInvNum = docMode === 'QUOTATION' 
+      ? `QUO-${Date.now().toString().slice(-8)}${Math.floor(10 + Math.random() * 90)}` 
+      : `INV-${Date.now().toString().slice(-8)}${Math.floor(10 + Math.random() * 90)}`;
+
     const payload = {
+      invoice_number: generatedInvNum,
       customer_id: selectedCustomerId,
       customer_name: custName,
       date: new Date().toISOString().slice(0, 10),
@@ -770,7 +775,7 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
       const data = await res.json();
       if (data.success) {
         const isQuo = docMode === 'QUOTATION';
-        const docRef = data.invoice_number;
+        const docRef = data.invoice_number || payload.invoice_number;
 
         const savedInvoiceObj = {
           ...payload,

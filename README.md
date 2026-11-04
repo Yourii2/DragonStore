@@ -6,7 +6,7 @@
 ### **Dragon Store Enterprise ERP & POS Management System**
 *منظومة متكاملة وشاملة لإدارة نقاط البيع، المخازن المتعددة، الماليات والخزائن، وعلاقات العملاء والموردين*
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-cyan.svg?style=for-the-badge)](https://github.com/)
+[![Version](https://img.shields.io/badge/Version-1.0.1-cyan.svg?style=for-the-badge)](https://github.com/)
 [![React](https://img.shields.io/badge/React-19.0.1-61DAFB.svg?style=for-the-badge&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![Database](https://img.shields.io/badge/Database-MySQL%208.0+-4479A1.svg?style=for-the-badge&logo=mysql)](https://www.mysql.com/)
