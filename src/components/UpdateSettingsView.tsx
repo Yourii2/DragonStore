@@ -31,6 +31,8 @@ interface UpdateInfo {
   releaseNotes?: string;
   publishedAt?: string;
   downloadUrl?: string;
+  assetDownloadUrl?: string;
+  assetName?: string;
 }
 
 export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactoryReset }) => {
@@ -41,6 +43,8 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
   });
 
   const [checking, setChecking] = useState(false);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [updateProgressText, setUpdateProgressText] = useState<string>('');
   const [message, setMessage] = useState<string | null>(null);
 
   // Maintenance & Reset state
@@ -68,7 +72,7 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
   };
 
   // Check for updates from backend
-  const checkUpdates = async () => {
+  const checkUpdates = async (showNotification = false) => {
     try {
       setChecking(true);
       setMessage(null);
@@ -81,19 +85,78 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
           hasUpdate: !!data.hasUpdate,
           releaseNotes: data.releaseNotes,
           publishedAt: data.publishedAt,
-          downloadUrl: data.downloadUrl
+          downloadUrl: data.downloadUrl,
+          assetDownloadUrl: data.assetDownloadUrl,
+          assetName: data.assetName
         });
 
         if (data.hasUpdate) {
           setMessage(`يوجد إصدار أحدث متوفر (${data.latestVersion})! يمكنك التحديث الآن.`);
+          if (showNotification) {
+            showSuccess('تحديث جديد متاح!', `يتوفر إصدار جديد (${data.latestVersion}). يمكنك النقر على "تثبيت وتطبيق التحديث الآن" لتحديث النظام تلقائياً.`);
+          }
         } else {
           setMessage('أنت تعمل حالياً بأحدث إصدار مستقر من النظام.');
+          if (showNotification) {
+            showSuccess('النظام محدث', `أنت تعمل حالياً بأحدث إصدار مستقر (${data.currentVersion}).`);
+          }
         }
       }
     } catch (err: any) {
       setMessage('تعذر الاتصال بـ GitHub للتحقق من التحديثات: ' + err.message);
+      if (showNotification) {
+        showError('خطأ أثناء الفحص', err.message);
+      }
     } finally {
       setChecking(false);
+    }
+  };
+
+  // 1-Click Automatic System Update Handler
+  const handleApplyUpdate = async () => {
+    const isForced = !updateInfo.hasUpdate;
+    const title = isForced ? 'إعادة تثبيت / تحديث إجباري للنظام' : 'تطبيق التحديث التلقائي الفوري';
+    const desc = isForced
+      ? `أنت تعمل حالياً بالإصدار (${updateInfo.currentVersion}). هل ترغب في تنزيل أحدث ملفات النظام من GitHub واستبدالها؟\n\n🛡️ ملاحظة هامة: سيتم الحفاظ الكامل على قاعدة البيانات والتراخيص والإعدادات.`
+      : `هل أنت متأكد من بدء التحديث التلقائي إلى الإصدار (${updateInfo.latestVersion})؟\n\n📦 سيقوم النظام تلقائياً بـ:\n1. تنزيل حزمة التحديث الرسمية من GitHub.\n2. فك الضغط واستبدال ملفات النظام بالملفات الجديدة.\n3. الحفاظ التام والصارم على قاعدة البيانات وتراخيص التشغيل.\n4. إعادة تنشيط النظام فوراً.`;
+
+    const confirm = await showConfirm(title, desc, {
+      confirmText: isForced ? 'متابعة التحديث الإجباري' : 'بدء التحديث التلقائي الآن',
+      cancelText: 'إلغاء'
+    });
+    if (!confirm) return;
+
+    try {
+      setApplyingUpdate(true);
+      setUpdateProgressText('جارٍ الاتصال بـ GitHub وتنزيل حزمة التحديث...');
+
+      const res = await fetch('/api/system/apply-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          downloadUrl: updateInfo.assetDownloadUrl,
+          version: updateInfo.latestVersion
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setUpdateProgressText('تم استبدال وتحديث الملفات بنجاح! جارٍ تنشيط التحديث...');
+        await showSuccess(
+          'تم تثبيت التحديث بنجاح! 🎉',
+          `${data.message}\nتم تحديث ${data.filesUpdated || ''} ملفاً بنجاح.\nسيتم إعادة تحميل الصفحة الآن للاستمتاع بالإصدار الجديد.`
+        );
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        throw new Error(data.error || 'فشلت عملية تطبيق التحديث');
+      }
+    } catch (err: any) {
+      showError('فشل تطبيق التحديث', err.message);
+    } finally {
+      setApplyingUpdate(false);
+      setUpdateProgressText('');
     }
   };
 
@@ -217,8 +280,8 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
         </div>
 
         <button
-          onClick={checkUpdates}
-          disabled={checking}
+          onClick={() => checkUpdates(true)}
+          disabled={checking || applyingUpdate}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/25 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
         >
           <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
@@ -333,26 +396,90 @@ export const UpdateSettingsView: React.FC<UpdateSettingsViewProps> = ({ onFactor
           </div>
         )}
 
-        {/* Update Instructions & Actions */}
-        <div className="p-4 rounded-2xl border border-cyan-500/20 bg-cyan-50/50 dark:bg-cyan-950/20 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5 text-cyan-900 dark:text-cyan-200">
-            <ShieldCheck className="w-5 h-5 text-cyan-500 shrink-0" />
-            <span>
-              نظام التحديث التلقائي مرتبط بمستودع GitHub. يتم فحص الإصدارات الجديدة وإرسال إشعار فوري عند توفر نسخة أحدث.
-            </span>
+        {/* 1-Click Auto Update Panel */}
+        <div className="p-5 rounded-2xl border-2 border-cyan-500/30 dark:border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-slate-50 to-emerald-500/10 dark:from-cyan-950/30 dark:via-slate-900 dark:to-emerald-950/20 shadow-sm space-y-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-cyan-500 animate-pulse" />
+                <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                  التحديث التلقائي الفوري للنظام (1-Click Auto Update)
+                </h4>
+                {updateInfo.hasUpdate && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 animate-bounce">
+                    تحديث جديد متاح!
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                بمجرد الضغط على الزر، يتم تنزيل أحدث ملفات من GitHub واستبدال ملفات النظام تلقائياً مع حماية كاملة لقاعدة البيانات والتراخيص.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+              <button
+                onClick={handleApplyUpdate}
+                disabled={applyingUpdate || checking}
+                className={`w-full md:w-auto flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl text-xs font-black shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  updateInfo.hasUpdate
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-500/30'
+                    : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/25'
+                }`}
+              >
+                {applyingUpdate ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>{updateProgressText || 'جارٍ التحديث التلقائي...'}</span>
+                  </>
+                ) : updateInfo.hasUpdate ? (
+                  <>
+                    <ArrowUpCircle className="w-5 h-5" />
+                    <span>تثبيت التحديث الآن ({updateInfo.latestVersion})</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>تحديث إجباري / إعادة تثبيت أحدث حزمة</span>
+                  </>
+                )}
+              </button>
+
+              {updateInfo.hasUpdate && (
+                <a
+                  href="https://github.com/Yourii2/DragonStore/releases"
+                  target="_blank"
+                  rel="noreferrer"
+                  title="تحميل يدوي من GitHub"
+                  className="flex items-center justify-center p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+              )}
+            </div>
           </div>
 
-          {updateInfo.hasUpdate && (
-            <a
-              href="https://github.com/Yourii2/DragonStore/releases"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all shadow-md shrink-0 cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>تحميل التحديث من GitHub</span>
-            </a>
+          {/* Progress / Status indicator */}
+          {applyingUpdate && (
+            <div className="p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 space-y-2 animate-fadeIn">
+              <div className="flex items-center justify-between text-xs font-bold text-cyan-800 dark:text-cyan-200">
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-600" />
+                  <span>{updateProgressText}</span>
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">يرجى عدم إغلاق الصفحة</span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                <div className="bg-gradient-to-r from-cyan-500 to-emerald-500 h-full rounded-full animate-pulse w-4/5"></div>
+              </div>
+            </div>
           )}
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span>
+              نظام التحديث آمن 100%: لا يتم المساس ببيانات الاتصال بقاعدة البيانات (db_config.json) أو مفاتيح التفعيل والتراخيص (Dragon.enc).
+            </span>
+          </div>
         </div>
       </div>
 

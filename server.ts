@@ -5,6 +5,9 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 import fs from 'fs';
+import { execSync } from 'child_process';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { loadConfigFile, saveConfigFile, getPool, resetPool, SystemConfig } from './db.js';
 import { INIT_MYSQL_TABLES_SQL } from './schema_init.js';
 import { getLicenseStatus, verifyLicenseOnline, getHardwareId } from './licenseService.js';
@@ -838,37 +841,89 @@ app.post('/api/settings/backup/import', async (req, res) => {
 // -------------------------------------------------------------
 // System Updates & GitHub Synchronization API
 // -------------------------------------------------------------
-const CURRENT_VERSION = 'v1.0.0';
 const GITHUB_REPO = 'Yourii2/DragonStore';
 
+function getCurrentVersion(): string {
+  try {
+    const pkgPath = path.join(process.cwd(), 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      if (pkg.version) {
+        return pkg.version.startsWith('v') ? pkg.version : `v${pkg.version}`;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'v1.0.2';
+}
+
+function isVersionNewer(latest: string, current: string): boolean {
+  try {
+    const cleanLatest = (latest || '').replace(/^v/, '').trim();
+    const cleanCurrent = (current || '').replace(/^v/, '').trim();
+    const lParts = cleanLatest.split('.').map(n => parseInt(n, 10) || 0);
+    const cParts = cleanCurrent.split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(lParts.length, cParts.length); i++) {
+      const l = lParts[i] || 0;
+      const c = cParts[i] || 0;
+      if (l > c) return true;
+      if (l < c) return false;
+    }
+    return false;
+  } catch {
+    return latest !== current;
+  }
+}
+
 app.get('/api/system/version', (req, res) => {
+  const currentVersion = getCurrentVersion();
   res.json({
     success: true,
-    currentVersion: CURRENT_VERSION,
+    currentVersion,
     repoUrl: `https://github.com/${GITHUB_REPO}.git`
   });
 });
 
 app.get('/api/system/check-updates', async (req, res) => {
+  const currentVersion = getCurrentVersion();
   try {
-    // Check latest release or tags from GitHub public API
+    // Check latest release from GitHub public API
     const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
       headers: { 'User-Agent': 'DragonStore-ERP-Updater' }
     });
 
     if (response.ok) {
       const release: any = await response.json();
-      const latestTag = release.tag_name || release.name;
-      const hasUpdate = latestTag && latestTag.replace(/^v/, '') > CURRENT_VERSION.replace(/^v/, '');
+      const latestTag = release.tag_name || release.name || currentVersion;
+      const hasUpdate = isVersionNewer(latestTag, currentVersion);
+
+      let assetDownloadUrl = '';
+      let assetName = '';
+      if (Array.isArray(release.assets) && release.assets.length > 0) {
+        const compiledZip = release.assets.find((a: any) => a.name.endsWith('.zip') && !a.name.toLowerCase().includes('source'));
+        const anyZip = release.assets.find((a: any) => a.name.endsWith('.zip'));
+        const chosen = compiledZip || anyZip;
+        if (chosen) {
+          assetDownloadUrl = chosen.browser_download_url;
+          assetName = chosen.name;
+        }
+      }
+      if (!assetDownloadUrl && release.zipball_url) {
+        assetDownloadUrl = release.zipball_url;
+        assetName = `DragonStore-${latestTag}.zip`;
+      }
 
       return res.json({
         success: true,
-        currentVersion: CURRENT_VERSION,
-        latestVersion: latestTag || CURRENT_VERSION,
-        hasUpdate: !!hasUpdate,
+        currentVersion,
+        latestVersion: latestTag,
+        hasUpdate,
         releaseNotes: release.body || 'لا توجد ملاحظات إصدار إضافية',
         publishedAt: release.published_at,
-        downloadUrl: release.html_url
+        downloadUrl: release.html_url,
+        assetDownloadUrl,
+        assetName
       });
     }
 
@@ -881,32 +936,174 @@ app.get('/api/system/check-updates', async (req, res) => {
       const tags: any = await tagsRes.json();
       if (Array.isArray(tags) && tags.length > 0) {
         const latestTag = tags[0].name;
-        const hasUpdate = latestTag && latestTag.replace(/^v/, '') > CURRENT_VERSION.replace(/^v/, '');
+        const hasUpdate = isVersionNewer(latestTag, currentVersion);
         return res.json({
           success: true,
-          currentVersion: CURRENT_VERSION,
+          currentVersion,
           latestVersion: latestTag,
-          hasUpdate: !!hasUpdate,
+          hasUpdate,
           releaseNotes: `أحدث وسم مسجل على GitHub: ${latestTag}`,
-          publishedAt: new Date().toISOString()
+          publishedAt: new Date().toISOString(),
+          assetDownloadUrl: `https://github.com/${GITHUB_REPO}/archive/refs/tags/${latestTag}.zip`,
+          assetName: `${latestTag}.zip`
         });
       }
     }
 
     res.json({
       success: true,
-      currentVersion: CURRENT_VERSION,
-      latestVersion: CURRENT_VERSION,
+      currentVersion,
+      latestVersion: currentVersion,
       hasUpdate: false,
       releaseNotes: 'أنت تعمل حالياً بأحدث إصدار مستقر من النظام'
     });
   } catch (err: any) {
     res.json({
       success: true,
-      currentVersion: CURRENT_VERSION,
-      latestVersion: CURRENT_VERSION,
+      currentVersion,
+      latestVersion: currentVersion,
       hasUpdate: false,
       message: 'تعذر الاتصال بـ GitHub للتحقق: ' + err.message
+    });
+  }
+});
+
+app.post('/api/system/apply-update', async (req, res) => {
+  const currentVersion = getCurrentVersion();
+  let tempDir = '';
+  try {
+    let { downloadUrl, version } = req.body || {};
+
+    // If downloadUrl not supplied, fetch latest release metadata from GitHub
+    if (!downloadUrl) {
+      const relRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+        headers: { 'User-Agent': 'DragonStore-ERP-Updater' }
+      });
+      if (relRes.ok) {
+        const release: any = await relRes.json();
+        version = release.tag_name || release.name;
+        if (Array.isArray(release.assets)) {
+          const compiledZip = release.assets.find((a: any) => a.name.endsWith('.zip') && !a.name.toLowerCase().includes('source'));
+          const anyZip = release.assets.find((a: any) => a.name.endsWith('.zip'));
+          const chosen = compiledZip || anyZip;
+          if (chosen) downloadUrl = chosen.browser_download_url;
+        }
+        if (!downloadUrl && release.zipball_url) {
+          downloadUrl = release.zipball_url;
+        }
+      }
+    }
+
+    if (!downloadUrl) {
+      return res.status(400).json({
+        success: false,
+        error: 'لم يتم العثور على رابط ملف التحديث في مستودع GitHub'
+      });
+    }
+
+    console.log(`[Auto-Update] Starting update to ${version || 'latest'} from: ${downloadUrl}`);
+
+    // Create unique temp directory
+    tempDir = path.join(process.cwd(), `temp_update_${Date.now()}`);
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(tempDir, { recursive: true });
+
+    const tempZip = path.join(tempDir, 'update.zip');
+    const extractDir = path.join(tempDir, 'extracted');
+    fs.mkdirSync(extractDir, { recursive: true });
+
+    // 1. Download zip file from GitHub release (follows 302 redirects automatically)
+    console.log('[Auto-Update] Downloading update zip...');
+    const dlResponse = await fetch(downloadUrl, {
+      headers: { 'User-Agent': 'DragonStore-ERP-Updater' }
+    });
+    if (!dlResponse.ok || !dlResponse.body) {
+      throw new Error(`فشل تنزيل ملف التحديث من GitHub (رمز الخطأ: ${dlResponse.status})`);
+    }
+
+    const fileStream = fs.createWriteStream(tempZip);
+    await pipeline(Readable.fromWeb(dlResponse.body as any), fileStream);
+    console.log('[Auto-Update] Download completed. Extracting archive...');
+
+    // 2. Extract zip archive (using built-in bsdtar or powershell fallback)
+    try {
+      execSync(`tar -xf "${tempZip}" -C "${extractDir}"`, { stdio: 'pipe' });
+    } catch (tarErr) {
+      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${tempZip}' -DestinationPath '${extractDir}' -Force"`, { stdio: 'pipe' });
+    }
+    console.log('[Auto-Update] Extraction completed.');
+
+    // 3. Locate content root inside extracted folder (unwrap single parent folder if present)
+    let sourceRoot = extractDir;
+    const extractedEntries = fs.readdirSync(extractDir);
+    if (extractedEntries.length === 1) {
+      const candidate = path.join(extractDir, extractedEntries[0]);
+      if (fs.statSync(candidate).isDirectory()) {
+        sourceRoot = candidate;
+      }
+    }
+
+    // 4. Recursive copy protecting sensitive files
+    const PROTECTED_ITEMS = new Set([
+      'db_config.json',
+      'Dragon.enc',
+      '.env',
+      '.git',
+      'backups'
+    ]);
+
+    let filesCopied = 0;
+    const copyRecursive = (src: string, dest: string) => {
+      const items = fs.readdirSync(src);
+      for (const item of items) {
+        if (PROTECTED_ITEMS.has(item) || item.endsWith('.enc') || item.startsWith('temp_update')) {
+          continue; // strictly preserve database configs, licenses, and environment
+        }
+        const sPath = path.join(src, item);
+        const dPath = path.join(dest, item);
+        const stat = fs.statSync(sPath);
+
+        if (stat.isDirectory()) {
+          if (!fs.existsSync(dPath)) {
+            fs.mkdirSync(dPath, { recursive: true });
+          }
+          copyRecursive(sPath, dPath);
+        } else {
+          fs.copyFileSync(sPath, dPath);
+          filesCopied++;
+        }
+      }
+    };
+
+    console.log('[Auto-Update] Applying updated files to system...');
+    copyRecursive(sourceRoot, process.cwd());
+    console.log(`[Auto-Update] Replaced ${filesCopied} files successfully.`);
+
+    // 5. Clean up temp folder
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch (cleanErr) {
+      // ignore
+    }
+
+    const updatedVersion = getCurrentVersion();
+    res.json({
+      success: true,
+      message: `تم تطبيق التحديث وتثبيت الإصدار (${updatedVersion}) بنجاح!`,
+      previousVersion: currentVersion,
+      newVersion: updatedVersion,
+      filesUpdated: filesCopied
+    });
+  } catch (error: any) {
+    console.error('[Auto-Update Error]', error);
+    if (tempDir && fs.existsSync(tempDir)) {
+      try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
+    }
+    res.status(500).json({
+      success: false,
+      error: 'فشل تطبيق التحديث التلقائي: ' + (error.message || error)
     });
   }
 });
