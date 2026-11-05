@@ -608,7 +608,8 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 font-mono">
                       {filteredRows.map((prod: any) => {
-                        const isLow = prod.current_stock <= prod.min_stock;
+                        const isPhysical = !prod.product_type || prod.product_type === 'PHYSICAL';
+                        const isLow = isPhysical && prod.current_stock <= prod.min_stock;
                         return (
                           <tr key={prod.id} className="hover:bg-slate-800/40 transition-colors">
                             <td className="py-2.5 px-4 font-bold text-cyan-400">{prod.code}</td>
@@ -619,10 +620,10 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
                               <span className={`px-2.5 py-0.5 rounded-full font-bold ${
                                 isLow ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                               }`}>
-                                {prod.current_stock} {prod.unit}
+                                {isPhysical ? `${prod.current_stock} ${prod.unit}` : (prod.product_type === 'SERVICE' ? 'خدمة (غير مخزني)' : 'رقمي (غير مخزني)')}
                               </span>
                             </td>
-                            <td className="py-2.5 px-4 text-center text-slate-500">{prod.min_stock}</td>
+                            <td className="py-2.5 px-4 text-center text-slate-500">{isPhysical ? prod.min_stock : '—'}</td>
                             <td className="py-2.5 px-4 text-slate-400">{Number(prod.buy_price).toLocaleString()}</td>
                             <td className="py-2.5 px-4 text-slate-300 font-bold">{Number(prod.sell_price).toLocaleString()}</td>
                             <td className="py-2.5 px-4 font-bold text-amber-400">{Number(prod.stock_cost_value).toLocaleString()} ج.م</td>

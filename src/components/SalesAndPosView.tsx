@@ -1394,7 +1394,8 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
                   </div>
                 ) : (
                   filteredProducts.map(p => {
-                    const isOutOfStock = docMode === 'SALE' && p.current_stock <= 0;
+                    const isPhysical = !p.product_type || p.product_type === 'PHYSICAL';
+                    const isOutOfStock = docMode === 'SALE' && isPhysical && p.current_stock <= 0;
                     const hasVarPrice = Boolean(Number(p.is_variable_price));
                     const hasVarCost = Boolean(Number(p.is_variable_cost));
 
@@ -1460,13 +1461,19 @@ export const SalesAndPosView: React.FC<SalesAndPosViewProps> = ({ initialMode = 
                               {Number(p.sell_price).toLocaleString()} <span className="text-[10px]">ج.م</span>
                             </div>
 
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              p.current_stock <= 0 
-                                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-500'
-                                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
-                            }`}>
-                              {p.current_stock <= 0 ? 'نفد' : `${p.current_stock} ${p.unit}`}
-                            </span>
+                            {isPhysical ? (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                p.current_stock <= 0 
+                                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-500'
+                                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                              }`}>
+                                {p.current_stock <= 0 ? 'نفد' : `${p.current_stock} ${p.unit}`}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                                {p.product_type === 'SERVICE' ? 'خدمة / صيانة' : 'رقمي'}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

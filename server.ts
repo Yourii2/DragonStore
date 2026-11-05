@@ -1634,7 +1634,8 @@ app.post('/api/products', async (req, res) => {
         Number(p.buy_price ?? p.buyPrice ?? 0), Number(p.sell_price ?? p.sellPrice ?? 0),
         minSellPrice,
         isVariablePrice, isVariableCost, productType, imageData,
-        Number(p.current_stock ?? p.currentStock ?? 0), Number(p.min_stock ?? p.minStock ?? 3),
+        Number(productType === 'PHYSICAL' ? (p.current_stock ?? p.currentStock ?? 0) : 0),
+        Number(productType === 'PHYSICAL' ? (p.min_stock ?? p.minStock ?? 3) : 0),
         p.warehouse || 'مخزن المتجر الرئيسي', p.has_serial || p.hasSerial ? 1 : 0,
         p.business_unit || p.businessUnit || 'SHOP',
         JSON.stringify(p.serial_numbers || p.serialNumbers || [])
@@ -3532,8 +3533,10 @@ app.get('/api/alerts/audit', async (req, res) => {
   }
 
   try {
-    // 1. Fetch low stock items from MySQL products table
-    const [lowRows]: any = await pool.query('SELECT * FROM products WHERE current_stock <= min_stock');
+    // 1. Fetch low stock items from MySQL products table (EXCLUDING non-physical items like SERVICE and DIGITAL)
+    const [lowRows]: any = await pool.query(
+      "SELECT * FROM products WHERE (product_type = 'PHYSICAL' OR product_type IS NULL) AND current_stock <= min_stock"
+    );
     const lowStockAlerts = lowRows.map((item: any) => ({
       id: `ALERT-STK-${item.code}`,
       code: item.code,
@@ -3583,11 +3586,19 @@ app.post('/api/alerts/simulate-stock', async (req, res) => {
   try {
     const { code, delta, name } = req.body || {};
     if (code) {
-      await pool.query('UPDATE products SET current_stock = GREATEST(0, current_stock + ?) WHERE code = ?', [Number(delta || -1), code]);
+      await pool.query(
+        "UPDATE products SET current_stock = GREATEST(0, current_stock + ?) WHERE code = ? AND (product_type = 'PHYSICAL' OR product_type IS NULL)",
+        [Number(delta || -1), code]
+      );
     } else if (name) {
-      await pool.query('UPDATE products SET current_stock = GREATEST(0, min_stock - 1) WHERE name LIKE ? LIMIT 1', [`%${name}%`]);
+      await pool.query(
+        "UPDATE products SET current_stock = GREATEST(0, min_stock - 1) WHERE name LIKE ? AND (product_type = 'PHYSICAL' OR product_type IS NULL) LIMIT 1",
+        [`%${name}%`]
+      );
     }
-    const [lowRows]: any = await pool.query('SELECT * FROM products WHERE current_stock <= min_stock');
+    const [lowRows]: any = await pool.query(
+      "SELECT * FROM products WHERE (product_type = 'PHYSICAL' OR product_type IS NULL) AND current_stock <= min_stock"
+    );
     const lowStockAlerts = lowRows.map((item: any) => ({
       id: `ALERT-STK-${item.code}`,
       code: item.code,
@@ -3656,7 +3667,9 @@ app.get('/api/alerts/stream', async (req, res) => {
     const pool = getPool();
     if (!pool) return;
     try {
-      const [lowRows]: any = await pool.query('SELECT * FROM products WHERE current_stock <= min_stock');
+      const [lowRows]: any = await pool.query(
+        "SELECT * FROM products WHERE (product_type = 'PHYSICAL' OR product_type IS NULL) AND current_stock <= min_stock"
+      );
       const lowStockAlerts = lowRows.map((item: any) => ({
         id: `ALERT-STK-${item.code}`,
         code: item.code,
@@ -3833,10 +3846,10 @@ app.post('/api/sales', async (req, res) => {
         const unitPrice = Number(item.unit_price || item.sale_price || 0);
         const unitCost = Number(item.unit_cost || item.purchase_price || 0);
 
-        // Deduct stock
+        // Deduct stock (PHYSICAL products only)
         if (prodId) {
           await conn.query(
-            'UPDATE products SET current_stock = current_stock - ? WHERE id = ?',
+            "UPDATE products SET current_stock = current_stock - ? WHERE id = ? AND (product_type = 'PHYSICAL' OR product_type IS NULL)",
             [qty, prodId]
           );
 
@@ -4018,7 +4031,7 @@ app.post('/api/sales/:id/return', async (req, res) => {
       const unitPrice = Number(item.unit_price || 0);
 
       await conn.query(
-        'UPDATE products SET current_stock = current_stock + ? WHERE id = ? OR code = ?',
+        "UPDATE products SET current_stock = current_stock + ? WHERE (id = ? OR code = ?) AND (product_type = 'PHYSICAL' OR product_type IS NULL)",
         [qty, prodId, prodId]
       );
 
@@ -4146,7 +4159,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
       `SELECT COUNT(*) as count, COALESCE(SUM(net_total), 0) as total FROM sales_invoices WHERE status = 'QUOTATION'`
     );
 
-    // 2. Inventory & Stock Valuation
+    // 2. Inventory & Stock Valuation (Physical inventory items only)
     const [products]: any = await pool.query(
       `SELECT COUNT(*) as total_items,
               COALESCE(SUM(current_stock), 0) as total_units,
@@ -4154,7 +4167,8 @@ app.get('/api/dashboard/stats', async (req, res) => {
               COALESCE(SUM(current_stock * sell_price), 0) as inventory_sell_valuation,
               COALESCE(SUM(CASE WHEN current_stock <= min_stock THEN 1 ELSE 0 END), 0) as low_stock_count,
               COALESCE(SUM(CASE WHEN current_stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock_count
-       FROM products`
+       FROM products
+       WHERE (product_type = 'PHYSICAL' OR product_type IS NULL)`
     );
 
     // 3. Treasuries & Accounts Cash
@@ -4190,10 +4204,12 @@ app.get('/api/dashboard/stats', async (req, res) => {
       `SELECT id, timestamp, user, action, module, details FROM audit_logs ORDER BY created_at DESC LIMIT 6`
     );
 
-    // 8. Low stock alert items list
+    // 8. Low stock alert items list (Physical products only)
     const [lowStockItems]: any = await pool.query(
       `SELECT id, code, name, category, current_stock, min_stock, buy_price, sell_price, warehouse
-       FROM products WHERE current_stock <= min_stock ORDER BY current_stock ASC LIMIT 5`
+       FROM products 
+       WHERE (product_type = 'PHYSICAL' OR product_type IS NULL) AND current_stock <= min_stock 
+       ORDER BY current_stock ASC LIMIT 5`
     );
 
     res.json({
@@ -4319,11 +4335,11 @@ app.get('/api/reports', async (req, res) => {
         params.push(warehouse);
       }
       if (status === 'low_stock') {
-        query += ' AND current_stock <= min_stock AND current_stock > 0';
+        query += " AND (product_type = 'PHYSICAL' OR product_type IS NULL) AND current_stock <= min_stock AND current_stock > 0";
       } else if (status === 'out_of_stock') {
-        query += ' AND current_stock <= 0';
+        query += " AND (product_type = 'PHYSICAL' OR product_type IS NULL) AND current_stock <= 0";
       } else if (status === 'available') {
-        query += ' AND current_stock > min_stock';
+        query += " AND (product_type = 'PHYSICAL' OR product_type IS NULL) AND current_stock > min_stock";
       }
 
       query += ' ORDER BY current_stock ASC, name ASC';
@@ -4331,12 +4347,13 @@ app.get('/api/reports', async (req, res) => {
 
       const totals = rows.reduce(
         (acc: any, row: any) => {
+          const isPhysical = !row.product_type || row.product_type === 'PHYSICAL';
           acc.totalItems += 1;
-          acc.totalUnits += Number(row.current_stock || 0);
+          acc.totalUnits += isPhysical ? Number(row.current_stock || 0) : 0;
           acc.totalCostValue += Number(row.stock_cost_value || 0);
           acc.totalSellValue += Number(row.stock_sell_value || 0);
           acc.totalPotentialProfit += Number(row.potential_profit || 0);
-          if (row.current_stock <= row.min_stock) acc.lowStockCount += 1;
+          if (isPhysical && Number(row.current_stock || 0) <= Number(row.min_stock || 0)) acc.lowStockCount += 1;
           return acc;
         },
         { totalItems: 0, totalUnits: 0, totalCostValue: 0, totalSellValue: 0, totalPotentialProfit: 0, lowStockCount: 0 }
@@ -4992,6 +5009,10 @@ async function startServer() {
           if (!names.includes('direct_expenses')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN direct_expenses DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER remaining_amount");
           if (!names.includes('net_profit')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN net_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER direct_expenses");
           if (!names.includes('expected_end_date')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN expected_end_date DATE NULL AFTER start_date");
+        } catch {}
+        // Ensure non-physical products (SERVICE, DIGITAL) have min_stock = 0 and current_stock = 0 so they never trigger stock alerts
+        try {
+          await pool.query("UPDATE products SET current_stock = 0, min_stock = 0 WHERE product_type IN ('SERVICE', 'DIGITAL')");
         } catch {}
       }
     }
