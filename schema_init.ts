@@ -203,12 +203,20 @@ CREATE TABLE IF NOT EXISTS cctv_projects (
   project_name VARCHAR(200) NOT NULL,
   customer_name VARCHAR(200) NOT NULL,
   customer_phone VARCHAR(50) NOT NULL,
+  location VARCHAR(255) NULL,
   cameras_count INT NOT NULL DEFAULT 4,
-  dvr_type VARCHAR(100) NOT NULL,
+  dvr_type VARCHAR(100) NOT NULL DEFAULT 'DVR/NVR 8-Ch',
+  contract_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  hardware_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  labor_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  other_expenses DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  total_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  net_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   paid_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   status VARCHAR(50) NOT NULL DEFAULT 'PLANNING',
   start_date DATE NOT NULL,
+  end_date DATE NULL,
   target_date DATE NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -216,13 +224,21 @@ CREATE TABLE IF NOT EXISTS cctv_projects (
 CREATE TABLE IF NOT EXISTS network_projects (
   id VARCHAR(50) PRIMARY KEY,
   project_name VARCHAR(200) NOT NULL,
-  client_name VARCHAR(200) NOT NULL,
-  scope_description TEXT NOT NULL,
+  customer_name VARCHAR(200) NOT NULL,
+  client_name VARCHAR(200) NULL,
+  location VARCHAR(255) NULL,
+  scope_description TEXT NULL,
   hardware_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  labor_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  other_expenses DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   installation_fees DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  contract_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   total_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  total_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  net_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   paid_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
-  status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+  status VARCHAR(50) NOT NULL DEFAULT 'IN_PROGRESS',
+  start_date DATE NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -231,11 +247,16 @@ CREATE TABLE IF NOT EXISTS internet_subscribers (
   subscriber_name VARCHAR(200) NOT NULL,
   phone VARCHAR(50) NOT NULL,
   ip_address VARCHAR(50) NULL,
+  mac_address VARCHAR(50) NULL,
+  router_mac VARCHAR(50) NULL,
   package_name VARCHAR(100) NOT NULL,
   monthly_fee DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  line_cost DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  profit DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  due_day_of_month INT NOT NULL DEFAULT 1,
   due_day INT NOT NULL DEFAULT 1,
+  last_payment_date DATE NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
-  router_mac VARCHAR(50) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -254,13 +275,21 @@ CREATE TABLE IF NOT EXISTS network_transactions (
 
 CREATE TABLE IF NOT EXISTS freelance_projects (
   id VARCHAR(50) PRIMARY KEY,
-  title VARCHAR(200) NOT NULL,
+  project_name VARCHAR(200) NOT NULL,
+  title VARCHAR(200) NULL,
+  client_id VARCHAR(50) NULL,
   client_name VARCHAR(200) NOT NULL,
   client_country VARCHAR(100) NOT NULL DEFAULT 'مصر',
+  contract_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   contract_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  paid_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  remaining_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  direct_expenses DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  net_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   currency VARCHAR(10) NOT NULL DEFAULT 'EGP',
   status VARCHAR(50) NOT NULL DEFAULT 'IN_PROGRESS',
   start_date DATE NOT NULL,
+  expected_end_date DATE NULL,
   milestones JSON NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -2778,49 +2778,727 @@ app.get('/api/expenses/categories', async (req, res) => {
   }
 });
 
-// Technical Services & Maintenance
+// =============================================================
+// Technical Services & Maintenance (CRUD & Persistence)
+// =============================================================
+
+// Initial Seed Data for Services & Freelance when tables are empty
+const defaultSeedMaintenance = [
+  { id: 'mnt1', order_number: 'SRV-2026-041', customer_name: 'د. خالد توفيق', customer_phone: '01011122233', device_type: 'لابتوب', brand_model: 'HP Omen 16 Gaming', serial_number: 'HP-OMN-8821', problem_description: 'ارتفاع مفاجئ في درجة الحرارة وصوت مروحة عالي مع إيقاف تشغيل تلقائي', status: 'IN_REPAIR', technician_name: 'م/ مصطفى كمال', parts_used: JSON.stringify([{ product_id: 'p4', name: 'معجون حراري Arctic MX-4 وتنظيف شامل', quantity: 1, cost: 250, price: 500 }]), labor_cost: 600, total_amount: 1100, paid_amount: 500, received_date: '2026-09-20' },
+  { id: 'mnt2', order_number: 'SRV-2026-042', customer_name: 'أ/ منى عبد العزيز', customer_phone: '01288899900', device_type: 'حاسوب مكتبي PC', brand_model: 'Custom Core i5 12th', serial_number: 'PC-CUS-1092', problem_description: 'الجهاز لا يعمل تماماً (Power Dead)', status: 'WAITING_APPROVAL', technician_name: 'م/ مصطفى كمال', parts_used: JSON.stringify([{ product_id: 'p3', name: 'باور سبلاي Cooler Master 650W Bronze', quantity: 1, cost: 2100, price: 2750 }]), labor_cost: 350, total_amount: 3100, paid_amount: 0, received_date: '2026-09-22' },
+  { id: 'mnt3', order_number: 'SRV-2026-040', customer_name: 'مكتب الأندلس للعقارات', customer_phone: '01122334455', device_type: 'لابتوب', brand_model: 'Dell Vostro 3510', serial_number: 'DL-VST-9941', problem_description: 'تغيير شاشة مكسورة وترقية رامات وهارد SSD', status: 'READY', technician_name: 'م/ مصطفى كمال', parts_used: JSON.stringify([{ product_id: 'p4', name: 'هارد SSD Samsung 1TB', quantity: 1, cost: 3200, price: 4100 }]), labor_cost: 700, total_amount: 4800, paid_amount: 4800, received_date: '2026-09-18', delivery_date: '2026-09-22' }
+];
+
+const defaultSeedCctv = [
+  { id: 'cctv1', project_name: 'توريد وتركيب منظومة مراقبة مصنع الأمل للألومنيوم', customer_name: 'شركة الأمل الصناعية', customer_phone: '01000112233', location: 'المنطقة الصناعية - العاشر من رمضان', cameras_count: 16, dvr_type: 'NVR 16-Channel 4K', contract_value: 68000, total_amount: 68000, hardware_cost: 41000, labor_cost: 8500, other_expenses: 2500, total_cost: 52000, net_profit: 16000, paid_amount: 50000, status: 'IN_PROGRESS', start_date: '2026-09-10' },
+  { id: 'cctv2', project_name: 'تركيب 8 كاميرات بدقة 5MP وفيلا سكنية', customer_name: 'أ/ كريم الشناوي', customer_phone: '01155544433', location: 'التجمع الخامس - حي النرجس', cameras_count: 8, dvr_type: 'DVR 8-Channel 5MP', contract_value: 28500, total_amount: 28500, hardware_cost: 16800, labor_cost: 3500, other_expenses: 800, total_cost: 21100, net_profit: 7400, paid_amount: 28500, status: 'COMPLETED', start_date: '2026-09-01', end_date: '2026-09-05' }
+];
+
+const defaultSeedNetworks = [
+  { id: 'net1', project_name: 'تأسيس شبكة راك و 24 نقطة بيانات لمكتب محاماة واستشارات', customer_name: 'شركة الأفق للاستشارات الهندسية', client_name: 'شركة الأفق للاستشارات الهندسية', location: 'مصر الجديدة - ميدان الحجاز', scope_description: 'توريد وتركيب راك 9U وسويتش 24 بورت جيجابت وتمديد كابلات Cat6 مع شهادات اختبار', contract_value: 45000, total_value: 45000, hardware_cost: 24500, labor_cost: 6000, other_expenses: 1500, installation_fees: 7500, total_cost: 32000, net_profit: 13000, paid_amount: 35000, status: 'IN_PROGRESS', start_date: '2026-09-12' }
+];
+
+const defaultSeedSubscribers = [
+  { id: 'sub1', subscriber_name: 'أ/ محمد إبراهيم البنا', phone: '01011223344', ip_address: '192.168.10.25', mac_address: 'E4:8D:8C:21:44:A1', router_mac: 'E4:8D:8C:21:44:A1', package_name: 'باقة سوبر 30 ميجا غير محدودة', monthly_fee: 350, line_cost: 190, profit: 160, due_day_of_month: 1, due_day: 1, last_payment_date: '2026-09-01', status: 'ACTIVE' },
+  { id: 'sub2', subscriber_name: 'محل عصير النخيل', phone: '01122446688', ip_address: '192.168.10.42', mac_address: '00:1A:2B:3C:4D:5E', router_mac: '00:1A:2B:3C:4D:5E', package_name: 'باقة الترا 50 ميجا تجارية', monthly_fee: 550, line_cost: 290, profit: 260, due_day_of_month: 5, due_day: 5, last_payment_date: '2026-09-05', status: 'ACTIVE' },
+  { id: 'sub3', subscriber_name: 'أ/ حسن الصياد', phone: '01299887711', ip_address: '192.168.10.78', mac_address: 'A0:B1:C2:D3:E4:F5', router_mac: 'A0:B1:C2:D3:E4:F5', package_name: 'باقة سوبر 30 ميجا غير محدودة', monthly_fee: 350, line_cost: 190, profit: 160, due_day_of_month: 10, due_day: 10, last_payment_date: '2026-08-10', status: 'OVERDUE' }
+];
+
+const defaultSeedFreelance = [
+  { 
+    id: 'flp1', 
+    project_name: 'تطوير منصة إدارة العقارات والتأجير السكني (SaaS)', 
+    title: 'تطوير منصة إدارة العقارات والتأجير السكني (SaaS)',
+    client_id: 'c3', 
+    client_name: 'م/ طارق عبد الرحمن - الرياض', 
+    client_country: 'السعودية',
+    contract_value: 65000, 
+    contract_amount: 65000,
+    paid_amount: 40000, 
+    remaining_amount: 25000, 
+    direct_expenses: 5400, 
+    net_profit: 59600, 
+    currency: 'EGP',
+    status: 'IN_PROGRESS', 
+    start_date: '2026-08-15', 
+    expected_end_date: '2026-10-30',
+    milestones: JSON.stringify([
+      { name: 'الدفعة المقدمة وتصميم المعمارية وقواعد البيانات', amount: 20000, is_paid: true, due_date: '2026-08-15' },
+      { name: 'إنجاز لوحة الإدارة وواجهات برمجة REST API', amount: 20000, is_paid: true, due_date: '2026-09-15' },
+      { name: 'تكامل بوابات الدفع والتطبيق والاختبار النهائي', amount: 25000, is_paid: false, due_date: '2026-10-30' }
+    ])
+  },
+  { 
+    id: 'flp2', 
+    project_name: 'نظام أتمتة مستودعات لشركة أدوات طبية', 
+    title: 'نظام أتمتة مستودعات لشركة أدوات طبية',
+    client_id: 'c1', 
+    client_name: 'شركة الأفق للاستشارات الهندسية', 
+    client_country: 'مصر',
+    contract_value: 48000, 
+    contract_amount: 48000,
+    paid_amount: 48000, 
+    remaining_amount: 0, 
+    direct_expenses: 2800, 
+    net_profit: 45200, 
+    currency: 'EGP',
+    status: 'COMPLETED', 
+    start_date: '2026-07-01', 
+    expected_end_date: '2026-08-25',
+    milestones: JSON.stringify([
+      { name: 'مقدم العقد', amount: 24000, is_paid: true, due_date: '2026-07-01' },
+      { name: 'التسليم النهائي والتدريب', amount: 24000, is_paid: true, due_date: '2026-08-25' }
+    ])
+  }
+];
+
+// 1. Maintenance Orders
 app.get('/api/services/maintenance', async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
   try {
-    const [rows] = await pool.query('SELECT * FROM maintenance_orders ORDER BY received_date DESC');
-    res.json({ success: true, data: rows });
+    const [cnt]: any = await pool.query('SELECT COUNT(*) as cnt FROM maintenance_orders');
+    if (cnt[0]?.cnt === 0) {
+      for (const m of defaultSeedMaintenance) {
+        await pool.query(
+          `INSERT INTO maintenance_orders (id, order_number, customer_name, customer_phone, device_type, brand_model, serial_number, problem_description, status, technician_name, parts_used, labor_cost, total_amount, paid_amount, received_date, delivery_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [m.id, m.order_number, m.customer_name, m.customer_phone, m.device_type, m.brand_model, m.serial_number, m.problem_description, m.status, m.technician_name, m.parts_used, m.labor_cost, m.total_amount, m.paid_amount, m.received_date, (m as any).delivery_date || null]
+        );
+      }
+    }
+    const [rows]: any = await pool.query('SELECT * FROM maintenance_orders ORDER BY received_date DESC, id DESC');
+    const parsed = rows.map((r: any) => ({
+      ...r,
+      parts_used: typeof r.parts_used === 'string' ? JSON.parse(r.parts_used) : (r.parts_used || []),
+      labor_cost: Number(r.labor_cost) || 0,
+      total_amount: Number(r.total_amount) || 0,
+      paid_amount: Number(r.paid_amount) || 0
+    }));
+    res.json({ success: true, data: parsed });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Freelance Projects
-app.get('/api/freelance/projects', async (req, res) => {
+app.post('/api/services/maintenance', async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
   try {
-    const [rows] = await pool.query('SELECT * FROM freelance_projects ORDER BY start_date DESC');
-    res.json({ success: true, data: rows });
+    const {
+      id,
+      order_number,
+      customer_name,
+      customer_phone,
+      device_type,
+      brand_model,
+      serial_number,
+      problem_description,
+      status,
+      technician_name,
+      parts_used,
+      labor_cost,
+      total_amount,
+      paid_amount,
+      received_date,
+      delivery_date
+    } = req.body;
+
+    const finalId = id || `mnt_${Date.now()}`;
+    const finalOrderNumber = order_number || `SRV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    const finalReceivedDate = received_date || new Date().toISOString().slice(0, 10);
+    const finalStatus = status || 'RECEIVED';
+    const partsJson = typeof parts_used === 'string' ? parts_used : JSON.stringify(parts_used || []);
+
+    await pool.query(
+      `INSERT INTO maintenance_orders (id, order_number, customer_name, customer_phone, device_type, brand_model, serial_number, problem_description, status, technician_name, parts_used, labor_cost, total_amount, paid_amount, received_date, delivery_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         order_number = VALUES(order_number),
+         customer_name = VALUES(customer_name),
+         customer_phone = VALUES(customer_phone),
+         device_type = VALUES(device_type),
+         brand_model = VALUES(brand_model),
+         serial_number = VALUES(serial_number),
+         problem_description = VALUES(problem_description),
+         status = VALUES(status),
+         technician_name = VALUES(technician_name),
+         parts_used = VALUES(parts_used),
+         labor_cost = VALUES(labor_cost),
+         total_amount = VALUES(total_amount),
+         paid_amount = VALUES(paid_amount),
+         received_date = VALUES(received_date),
+         delivery_date = VALUES(delivery_date)`,
+      [
+        finalId,
+        finalOrderNumber,
+        customer_name || 'عميل نقدي',
+        customer_phone || '',
+        device_type || 'حاسوب',
+        brand_model || '',
+        serial_number || '',
+        problem_description || 'صيانة عامة',
+        finalStatus,
+        technician_name || 'م/ مصطفى كمال',
+        partsJson,
+        Number(labor_cost) || 0,
+        Number(total_amount) || 0,
+        Number(paid_amount) || 0,
+        finalReceivedDate,
+        delivery_date || null
+      ]
+    );
+
+    res.json({ success: true, message: 'تم حفظ أمر الصيانة بنجاح', id: finalId, order_number: finalOrderNumber });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// CCTV Projects
+app.patch('/api/services/maintenance/:id/status', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const { id } = req.params;
+    const { status, delivery_date } = req.body;
+    const finalDeliveryDate = status === 'DELIVERED' ? (delivery_date || new Date().toISOString().slice(0, 10)) : null;
+
+    await pool.query(
+      `UPDATE maintenance_orders SET status = ?, delivery_date = COALESCE(?, delivery_date) WHERE id = ?`,
+      [status, finalDeliveryDate, id]
+    );
+    res.json({ success: true, message: 'تم تحديث حالة الصيانة بنجاح', status, delivery_date: finalDeliveryDate });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/services/maintenance/:id', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    await pool.query('DELETE FROM maintenance_orders WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'تم حذف أمر الصيانة بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 2. CCTV Projects
 app.get('/api/services/cctv', async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
   try {
-    const [rows] = await pool.query('SELECT * FROM cctv_projects ORDER BY start_date DESC');
-    res.json({ success: true, data: rows });
+    const [cnt]: any = await pool.query('SELECT COUNT(*) as cnt FROM cctv_projects');
+    if (cnt[0]?.cnt === 0) {
+      for (const c of defaultSeedCctv) {
+        await pool.query(
+          `INSERT INTO cctv_projects (id, project_name, customer_name, customer_phone, location, cameras_count, dvr_type, contract_value, total_amount, hardware_cost, labor_cost, other_expenses, total_cost, net_profit, paid_amount, status, start_date, end_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [c.id, c.project_name, c.customer_name, c.customer_phone, c.location, c.cameras_count, c.dvr_type, c.contract_value, c.total_amount, c.hardware_cost, c.labor_cost, c.other_expenses, c.total_cost, c.net_profit, c.paid_amount, c.status, c.start_date, (c as any).end_date || null]
+        );
+      }
+    }
+    const [rows]: any = await pool.query('SELECT * FROM cctv_projects ORDER BY start_date DESC, id DESC');
+    const mapped = rows.map((r: any) => ({
+      ...r,
+      contract_value: Number(r.contract_value || r.total_amount) || 0,
+      hardware_cost: Number(r.hardware_cost) || 0,
+      labor_cost: Number(r.labor_cost) || 0,
+      other_expenses: Number(r.other_expenses) || 0,
+      total_cost: Number(r.total_cost) || (Number(r.hardware_cost || 0) + Number(r.labor_cost || 0) + Number(r.other_expenses || 0)),
+      net_profit: Number(r.net_profit) || ((Number(r.contract_value || r.total_amount || 0)) - (Number(r.hardware_cost || 0) + Number(r.labor_cost || 0) + Number(r.other_expenses || 0))),
+      paid_amount: Number(r.paid_amount) || 0
+    }));
+    res.json({ success: true, data: mapped });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Internet Subscribers
+app.post('/api/services/cctv', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const {
+      id,
+      project_name,
+      customer_name,
+      customer_phone,
+      location,
+      cameras_count,
+      dvr_type,
+      contract_value,
+      hardware_cost,
+      labor_cost,
+      other_expenses,
+      paid_amount,
+      status,
+      start_date,
+      end_date
+    } = req.body;
+
+    const finalId = id || `cctv_${Date.now()}`;
+    const cVal = Number(contract_value) || 0;
+    const hCost = Number(hardware_cost) || 0;
+    const lCost = Number(labor_cost) || 0;
+    const oCost = Number(other_expenses) || 0;
+    const totalCost = hCost + lCost + oCost;
+    const netProfit = cVal - totalCost;
+
+    await pool.query(
+      `INSERT INTO cctv_projects (id, project_name, customer_name, customer_phone, location, cameras_count, dvr_type, contract_value, total_amount, hardware_cost, labor_cost, other_expenses, total_cost, net_profit, paid_amount, status, start_date, end_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         project_name = VALUES(project_name),
+         customer_name = VALUES(customer_name),
+         customer_phone = VALUES(customer_phone),
+         location = VALUES(location),
+         cameras_count = VALUES(cameras_count),
+         dvr_type = VALUES(dvr_type),
+         contract_value = VALUES(contract_value),
+         total_amount = VALUES(total_amount),
+         hardware_cost = VALUES(hardware_cost),
+         labor_cost = VALUES(labor_cost),
+         other_expenses = VALUES(other_expenses),
+         total_cost = VALUES(total_cost),
+         net_profit = VALUES(net_profit),
+         paid_amount = VALUES(paid_amount),
+         status = VALUES(status),
+         start_date = VALUES(start_date),
+         end_date = VALUES(end_date)`,
+      [
+        finalId,
+        project_name || 'مشروع كاميرات مراقبة جديد',
+        customer_name || 'عميل',
+        customer_phone || '',
+        location || '',
+        Number(cameras_count) || 4,
+        dvr_type || 'DVR 8-CH',
+        cVal,
+        cVal,
+        hCost,
+        lCost,
+        oCost,
+        totalCost,
+        netProfit,
+        Number(paid_amount) || 0,
+        status || 'PLANNING',
+        start_date || new Date().toISOString().slice(0, 10),
+        end_date || null
+      ]
+    );
+
+    res.json({ success: true, message: 'تم حفظ مشروع كاميرات المراقبة بنجاح', id: finalId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/services/cctv/:id', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    await pool.query('DELETE FROM cctv_projects WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'تم حذف مشروع الكاميرات بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Network Projects
+app.get('/api/services/networks', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const [cnt]: any = await pool.query('SELECT COUNT(*) as cnt FROM network_projects');
+    if (cnt[0]?.cnt === 0) {
+      for (const n of defaultSeedNetworks) {
+        await pool.query(
+          `INSERT INTO network_projects (id, project_name, customer_name, client_name, location, scope_description, hardware_cost, labor_cost, other_expenses, installation_fees, contract_value, total_value, total_cost, net_profit, paid_amount, status, start_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [n.id, n.project_name, n.customer_name, n.client_name, n.location, n.scope_description, n.hardware_cost, n.labor_cost, n.other_expenses, n.installation_fees, n.contract_value, n.total_value, n.total_cost, n.net_profit, n.paid_amount, n.status, n.start_date]
+        );
+      }
+    }
+    const [rows]: any = await pool.query('SELECT * FROM network_projects ORDER BY start_date DESC, id DESC');
+    const mapped = rows.map((r: any) => ({
+      ...r,
+      customer_name: r.customer_name || r.client_name || '',
+      contract_value: Number(r.contract_value || r.total_value) || 0,
+      hardware_cost: Number(r.hardware_cost) || 0,
+      labor_cost: Number(r.labor_cost) || 0,
+      other_expenses: Number(r.other_expenses) || 0,
+      total_cost: Number(r.total_cost) || (Number(r.hardware_cost || 0) + Number(r.labor_cost || 0) + Number(r.other_expenses || 0)),
+      net_profit: Number(r.net_profit) || ((Number(r.contract_value || r.total_value || 0)) - (Number(r.hardware_cost || 0) + Number(r.labor_cost || 0) + Number(r.other_expenses || 0))),
+      paid_amount: Number(r.paid_amount) || 0
+    }));
+    res.json({ success: true, data: mapped });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/services/networks', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const {
+      id,
+      project_name,
+      customer_name,
+      location,
+      scope_description,
+      contract_value,
+      hardware_cost,
+      labor_cost,
+      other_expenses,
+      paid_amount,
+      status,
+      start_date
+    } = req.body;
+
+    const finalId = id || `net_${Date.now()}`;
+    const cVal = Number(contract_value) || 0;
+    const hCost = Number(hardware_cost) || 0;
+    const lCost = Number(labor_cost) || 0;
+    const oCost = Number(other_expenses) || 0;
+    const totalCost = hCost + lCost + oCost;
+    const netProfit = cVal - totalCost;
+
+    await pool.query(
+      `INSERT INTO network_projects (id, project_name, customer_name, client_name, location, scope_description, hardware_cost, labor_cost, other_expenses, installation_fees, contract_value, total_value, total_cost, net_profit, paid_amount, status, start_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         project_name = VALUES(project_name),
+         customer_name = VALUES(customer_name),
+         client_name = VALUES(client_name),
+         location = VALUES(location),
+         scope_description = VALUES(scope_description),
+         hardware_cost = VALUES(hardware_cost),
+         labor_cost = VALUES(labor_cost),
+         other_expenses = VALUES(other_expenses),
+         installation_fees = VALUES(installation_fees),
+         contract_value = VALUES(contract_value),
+         total_value = VALUES(total_value),
+         total_cost = VALUES(total_cost),
+         net_profit = VALUES(net_profit),
+         paid_amount = VALUES(paid_amount),
+         status = VALUES(status),
+         start_date = VALUES(start_date)`,
+      [
+        finalId,
+        project_name || 'مشروع شبكة جديد',
+        customer_name || 'عميل',
+        customer_name || 'عميل',
+        location || '',
+        scope_description || '',
+        hCost,
+        lCost,
+        oCost,
+        lCost,
+        cVal,
+        cVal,
+        totalCost,
+        netProfit,
+        Number(paid_amount) || 0,
+        status || 'IN_PROGRESS',
+        start_date || new Date().toISOString().slice(0, 10)
+      ]
+    );
+
+    res.json({ success: true, message: 'تم حفظ مشروع الشبكة بنجاح', id: finalId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/services/networks/:id', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    await pool.query('DELETE FROM network_projects WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'تم حذف مشروع الشبكة بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 4. Internet Subscribers
 app.get('/api/services/subscribers', async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
   try {
-    const [rows] = await pool.query('SELECT * FROM internet_subscribers ORDER BY id DESC');
-    res.json({ success: true, data: rows });
+    const [cnt]: any = await pool.query('SELECT COUNT(*) as cnt FROM internet_subscribers');
+    if (cnt[0]?.cnt === 0) {
+      for (const s of defaultSeedSubscribers) {
+        await pool.query(
+          `INSERT INTO internet_subscribers (id, subscriber_name, phone, ip_address, mac_address, router_mac, package_name, monthly_fee, line_cost, profit, due_day_of_month, due_day, last_payment_date, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [s.id, s.subscriber_name, s.phone, s.ip_address, s.mac_address, s.router_mac, s.package_name, s.monthly_fee, s.line_cost, s.profit, s.due_day_of_month, s.due_day, s.last_payment_date, s.status]
+        );
+      }
+    }
+    const [rows]: any = await pool.query('SELECT * FROM internet_subscribers ORDER BY id DESC');
+    const mapped = rows.map((r: any) => ({
+      ...r,
+      mac_address: r.mac_address || r.router_mac || '',
+      due_day_of_month: Number(r.due_day_of_month || r.due_day) || 1,
+      monthly_fee: Number(r.monthly_fee) || 0,
+      line_cost: Number(r.line_cost) || 0,
+      profit: Number(r.profit) || ((Number(r.monthly_fee) || 0) - (Number(r.line_cost) || 0))
+    }));
+    res.json({ success: true, data: mapped });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/services/subscribers', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const {
+      id,
+      subscriber_name,
+      phone,
+      ip_address,
+      mac_address,
+      package_name,
+      monthly_fee,
+      line_cost,
+      due_day_of_month,
+      last_payment_date,
+      status
+    } = req.body;
+
+    const finalId = id || `sub_${Date.now()}`;
+    const mFee = Number(monthly_fee) || 0;
+    const lCost = Number(line_cost) || 0;
+    const profit = mFee - lCost;
+    const dueDay = Number(due_day_of_month) || 1;
+
+    await pool.query(
+      `INSERT INTO internet_subscribers (id, subscriber_name, phone, ip_address, mac_address, router_mac, package_name, monthly_fee, line_cost, profit, due_day_of_month, due_day, last_payment_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         subscriber_name = VALUES(subscriber_name),
+         phone = VALUES(phone),
+         ip_address = VALUES(ip_address),
+         mac_address = VALUES(mac_address),
+         router_mac = VALUES(router_mac),
+         package_name = VALUES(package_name),
+         monthly_fee = VALUES(monthly_fee),
+         line_cost = VALUES(line_cost),
+         profit = VALUES(profit),
+         due_day_of_month = VALUES(due_day_of_month),
+         due_day = VALUES(due_day),
+         last_payment_date = VALUES(last_payment_date),
+         status = VALUES(status)`,
+      [
+        finalId,
+        subscriber_name || 'مشترك جديد',
+        phone || '',
+        ip_address || '',
+        mac_address || '',
+        mac_address || '',
+        package_name || 'باقة منزلية',
+        mFee,
+        lCost,
+        profit,
+        dueDay,
+        dueDay,
+        last_payment_date || new Date().toISOString().slice(0, 10),
+        status || 'ACTIVE'
+      ]
+    );
+
+    res.json({ success: true, message: 'تم حفظ المشترك بنجاح', id: finalId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.patch('/api/services/subscribers/:id/toggle-payment', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const { id } = req.params;
+    const [rows]: any = await pool.query('SELECT status, last_payment_date FROM internet_subscribers WHERE id = ?', [id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Subscriber not found' });
+
+    const currentStatus = rows[0].status;
+    const nextStatus = currentStatus === 'ACTIVE' ? 'OVERDUE' : 'ACTIVE';
+    const nextDate = nextStatus === 'ACTIVE' ? new Date().toISOString().slice(0, 10) : rows[0].last_payment_date;
+
+    await pool.query('UPDATE internet_subscribers SET status = ?, last_payment_date = ? WHERE id = ?', [nextStatus, nextDate, id]);
+    res.json({ success: true, status: nextStatus, last_payment_date: nextDate });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/services/subscribers/:id', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    await pool.query('DELETE FROM internet_subscribers WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'تم حذف المشترك بنجاح' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// =============================================================
+// Freelance Software Development Projects (CRUD & Persistence)
+// =============================================================
+app.get('/api/freelance/projects', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const [cnt]: any = await pool.query('SELECT COUNT(*) as cnt FROM freelance_projects');
+    if (cnt[0]?.cnt === 0) {
+      for (const f of defaultSeedFreelance) {
+        await pool.query(
+          `INSERT INTO freelance_projects (id, project_name, title, client_id, client_name, client_country, contract_value, contract_amount, paid_amount, remaining_amount, direct_expenses, net_profit, currency, status, start_date, expected_end_date, milestones)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [f.id, f.project_name, f.title, f.client_id, f.client_name, f.client_country, f.contract_value, f.contract_amount, f.paid_amount, f.remaining_amount, f.direct_expenses, f.net_profit, f.currency, f.status, f.start_date, (f as any).expected_end_date || null, f.milestones]
+        );
+      }
+    }
+    const [rows]: any = await pool.query('SELECT * FROM freelance_projects ORDER BY start_date DESC, id DESC');
+    const parsed = rows.map((r: any) => {
+      const milestones = typeof r.milestones === 'string' ? JSON.parse(r.milestones) : (r.milestones || []);
+      const cVal = Number(r.contract_value || r.contract_amount) || 0;
+      const pAmt = Number(r.paid_amount) || 0;
+      const rAmt = Number(r.remaining_amount !== undefined ? r.remaining_amount : (cVal - pAmt)) || 0;
+      const dExp = Number(r.direct_expenses) || 0;
+      const nProf = Number(r.net_profit !== undefined ? r.net_profit : (cVal - dExp)) || 0;
+
+      return {
+        ...r,
+        project_name: r.project_name || r.title || 'مشروع برمجي',
+        client_name: r.client_name || '',
+        contract_value: cVal,
+        paid_amount: pAmt,
+        remaining_amount: rAmt,
+        direct_expenses: dExp,
+        net_profit: nProf,
+        milestones
+      };
+    });
+    res.json({ success: true, data: parsed });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/freelance/projects', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const {
+      id,
+      project_name,
+      client_id,
+      client_name,
+      contract_value,
+      direct_expenses,
+      status,
+      start_date,
+      expected_end_date,
+      milestones
+    } = req.body;
+
+    const finalId = id || `flp_${Date.now()}`;
+    const mList = Array.isArray(milestones) ? milestones : (typeof milestones === 'string' ? JSON.parse(milestones) : []);
+    const cVal = Number(contract_value) || 0;
+    const paidAmount = mList.filter((m: any) => m.is_paid).reduce((s: number, m: any) => s + Number(m.amount || 0), 0);
+    const remAmount = Math.max(0, cVal - paidAmount);
+    const dExp = Number(direct_expenses) || 0;
+    const netProf = cVal - dExp;
+    const mJson = JSON.stringify(mList);
+
+    await pool.query(
+      `INSERT INTO freelance_projects (id, project_name, title, client_id, client_name, client_country, contract_value, contract_amount, paid_amount, remaining_amount, direct_expenses, net_profit, currency, status, start_date, expected_end_date, milestones)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         project_name = VALUES(project_name),
+         title = VALUES(title),
+         client_id = VALUES(client_id),
+         client_name = VALUES(client_name),
+         contract_value = VALUES(contract_value),
+         contract_amount = VALUES(contract_amount),
+         paid_amount = VALUES(paid_amount),
+         remaining_amount = VALUES(remaining_amount),
+         direct_expenses = VALUES(direct_expenses),
+         net_profit = VALUES(net_profit),
+         status = VALUES(status),
+         start_date = VALUES(start_date),
+         expected_end_date = VALUES(expected_end_date),
+         milestones = VALUES(milestones)`,
+      [
+        finalId,
+        project_name || 'مشروع برمجي جديد',
+        project_name || 'مشروع برمجي جديد',
+        client_id || 'c_direct',
+        client_name || 'عميل',
+        'مصر',
+        cVal,
+        cVal,
+        paidAmount,
+        remAmount,
+        dExp,
+        netProf,
+        'EGP',
+        status || 'IN_PROGRESS',
+        start_date || new Date().toISOString().slice(0, 10),
+        expected_end_date || new Date().toISOString().slice(0, 10),
+        mJson
+      ]
+    );
+
+    res.json({ success: true, message: 'تم حفظ المشروع البرمجي بنجاح', id: finalId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.patch('/api/freelance/projects/:id/milestones/:index/toggle', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    const { id, index } = req.params;
+    const idx = parseInt(index, 10);
+    const [rows]: any = await pool.query('SELECT * FROM freelance_projects WHERE id = ?', [id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    const proj = rows[0];
+    const milestones = typeof proj.milestones === 'string' ? JSON.parse(proj.milestones) : (proj.milestones || []);
+    if (!milestones[idx]) return res.status(400).json({ success: false, message: 'Invalid milestone index' });
+
+    milestones[idx].is_paid = !milestones[idx].is_paid;
+    const contractVal = Number(proj.contract_value || proj.contract_amount) || 0;
+    const newPaid = milestones.filter((m: any) => m.is_paid).reduce((s: number, m: any) => s + Number(m.amount || 0), 0);
+    const newRemaining = Math.max(0, contractVal - newPaid);
+
+    await pool.query(
+      `UPDATE freelance_projects SET milestones = ?, paid_amount = ?, remaining_amount = ? WHERE id = ?`,
+      [JSON.stringify(milestones), newPaid, newRemaining, id]
+    );
+
+    res.json({ success: true, milestones, paid_amount: newPaid, remaining_amount: newRemaining });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/freelance/projects/:id', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(500).json({ success: false, message: 'Database not initialized' });
+  try {
+    await pool.query('DELETE FROM freelance_projects WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'تم حذف المشروع البرمجي بنجاح' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -4253,6 +4931,67 @@ async function startServer() {
           if (cols.length === 0) {
             await pool.query("ALTER TABLE accounts ADD COLUMN keeper_name VARCHAR(150) NULL DEFAULT 'المدير المالي' AFTER balance");
           }
+        } catch {}
+
+        // Ensure maintenance_orders delivery_date exists
+        try {
+          const [mntCols]: any = await pool.query("SHOW COLUMNS FROM maintenance_orders LIKE 'delivery_date'");
+          if (mntCols.length === 0) {
+            await pool.query("ALTER TABLE maintenance_orders ADD COLUMN delivery_date DATE NULL AFTER received_date");
+          }
+        } catch {}
+
+        // Ensure cctv_projects has all needed columns
+        try {
+          const [cctvCols]: any = await pool.query("SHOW COLUMNS FROM cctv_projects");
+          const names = cctvCols.map((c: any) => c.Field);
+          if (!names.includes('location')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN location VARCHAR(255) NULL AFTER customer_phone");
+          if (!names.includes('contract_value')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN contract_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER dvr_type");
+          if (!names.includes('hardware_cost')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN hardware_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER total_amount");
+          if (!names.includes('labor_cost')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN labor_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER hardware_cost");
+          if (!names.includes('other_expenses')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN other_expenses DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER labor_cost");
+          if (!names.includes('total_cost')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN total_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER other_expenses");
+          if (!names.includes('net_profit')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN net_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER total_cost");
+          if (!names.includes('end_date')) await pool.query("ALTER TABLE cctv_projects ADD COLUMN end_date DATE NULL AFTER start_date");
+        } catch {}
+
+        // Ensure network_projects has all needed columns
+        try {
+          const [netCols]: any = await pool.query("SHOW COLUMNS FROM network_projects");
+          const names = netCols.map((c: any) => c.Field);
+          if (!names.includes('customer_name')) await pool.query("ALTER TABLE network_projects ADD COLUMN customer_name VARCHAR(200) NULL AFTER project_name");
+          if (!names.includes('location')) await pool.query("ALTER TABLE network_projects ADD COLUMN location VARCHAR(255) NULL AFTER customer_name");
+          if (!names.includes('contract_value')) await pool.query("ALTER TABLE network_projects ADD COLUMN contract_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER installation_fees");
+          if (!names.includes('labor_cost')) await pool.query("ALTER TABLE network_projects ADD COLUMN labor_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER hardware_cost");
+          if (!names.includes('other_expenses')) await pool.query("ALTER TABLE network_projects ADD COLUMN other_expenses DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER labor_cost");
+          if (!names.includes('total_cost')) await pool.query("ALTER TABLE network_projects ADD COLUMN total_cost DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER other_expenses");
+          if (!names.includes('net_profit')) await pool.query("ALTER TABLE network_projects ADD COLUMN net_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER total_cost");
+          if (!names.includes('start_date')) await pool.query("ALTER TABLE network_projects ADD COLUMN start_date DATE NULL AFTER status");
+        } catch {}
+
+        // Ensure internet_subscribers has all needed columns
+        try {
+          const [subCols]: any = await pool.query("SHOW COLUMNS FROM internet_subscribers");
+          const names = subCols.map((c: any) => c.Field);
+          if (!names.includes('mac_address')) await pool.query("ALTER TABLE internet_subscribers ADD COLUMN mac_address VARCHAR(50) NULL AFTER ip_address");
+          if (!names.includes('line_cost')) await pool.query("ALTER TABLE internet_subscribers ADD COLUMN line_cost DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER monthly_fee");
+          if (!names.includes('profit')) await pool.query("ALTER TABLE internet_subscribers ADD COLUMN profit DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER line_cost");
+          if (!names.includes('due_day_of_month')) await pool.query("ALTER TABLE internet_subscribers ADD COLUMN due_day_of_month INT NOT NULL DEFAULT 1 AFTER due_day");
+          if (!names.includes('last_payment_date')) await pool.query("ALTER TABLE internet_subscribers ADD COLUMN last_payment_date DATE NULL AFTER due_day_of_month");
+        } catch {}
+
+        // Ensure freelance_projects has all needed columns
+        try {
+          const [flCols]: any = await pool.query("SHOW COLUMNS FROM freelance_projects");
+          const names = flCols.map((c: any) => c.Field);
+          if (!names.includes('project_name')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN project_name VARCHAR(200) NULL AFTER id");
+          if (!names.includes('client_id')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN client_id VARCHAR(50) NULL AFTER project_name");
+          if (!names.includes('contract_value')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN contract_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER client_country");
+          if (!names.includes('paid_amount')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN paid_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER contract_value");
+          if (!names.includes('remaining_amount')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN remaining_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER paid_amount");
+          if (!names.includes('direct_expenses')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN direct_expenses DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER remaining_amount");
+          if (!names.includes('net_profit')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN net_profit DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER direct_expenses");
+          if (!names.includes('expected_end_date')) await pool.query("ALTER TABLE freelance_projects ADD COLUMN expected_end_date DATE NULL AFTER start_date");
         } catch {}
       }
     }
