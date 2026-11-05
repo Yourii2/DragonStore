@@ -87,8 +87,8 @@ export const AccountingReportsView: React.FC<AccountingReportsViewProps> = ({ in
         const whData = await whRes.json();
         const catData = await catRes.json();
         const expCatData = await expCatRes.json();
-        if (whData.success) setWarehouses(whData.warehouses || []);
-        if (catData.success) setCategories(catData.categories || []);
+        if (whData.success) setWarehouses(whData.warehouses || whData.data || []);
+        if (catData.success) setCategories(catData.categories || catData.data || []);
         if (expCatData.success && Array.isArray(expCatData.categories)) {
           setExpenseCategories(expCatData.categories);
         }

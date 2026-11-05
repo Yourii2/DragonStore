@@ -116,13 +116,6 @@ app.get('/api/system/status', async (req, res) => {
   });
 });
 
-app.post('/api/system/reset', (req, res) => {
-  const config: SystemConfig = { isInstalled: false };
-  saveConfigFile(config);
-  resetPool();
-  res.json({ success: true, message: 'تمت إعادة ضبط النظام إلى حالة ما قبل التثبيت بنجاح' });
-});
-
 // -------------------------------------------------------------
 // Settings: Connection, Company, Backup & Restore
 // -------------------------------------------------------------
@@ -1841,7 +1834,7 @@ app.get('/api/warehouses', async (req, res) => {
       GROUP BY w.id, w.code, w.name, w.keeper_name, w.location, w.type, w.created_at
       ORDER BY w.id ASC
     `);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: rows, warehouses: rows });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1923,7 +1916,7 @@ app.get(['/api/categories', '/api/product-categories'], async (req, res) => {
       GROUP BY c.id, c.name, c.description, c.image_url, c.created_at
       ORDER BY c.id ASC
     `);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: rows, categories: rows });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -2906,6 +2899,74 @@ app.post('/api/alerts/mark-read', (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/alerts/simulate-stock', async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.json({ success: true, message: 'Simulated locally' });
+  try {
+    const { code, delta, name } = req.body || {};
+    if (code) {
+      await pool.query('UPDATE products SET current_stock = GREATEST(0, current_stock + ?) WHERE code = ?', [Number(delta || -1), code]);
+    } else if (name) {
+      await pool.query('UPDATE products SET current_stock = GREATEST(0, min_stock - 1) WHERE name LIKE ? LIMIT 1', [`%${name}%`]);
+    }
+    const [lowRows]: any = await pool.query('SELECT * FROM products WHERE current_stock <= min_stock');
+    const lowStockAlerts = lowRows.map((item: any) => ({
+      id: `ALERT-STK-${item.code}`,
+      code: item.code,
+      name: item.name,
+      category: 'LOW_STOCK',
+      severity: item.current_stock === 0 ? 'CRITICAL' : 'WARNING',
+      warehouse: item.warehouse,
+      currentStock: item.current_stock,
+      minStock: item.min_stock,
+      deficit: item.min_stock - item.current_stock,
+      unit: item.unit,
+      title: `نقص مخزون حرج: ${item.name}`,
+      description: `الرصيد في (${item.warehouse}) هو ${item.current_stock} ${item.unit} فقط.`,
+      targetTab: 'products',
+      actionLabel: 'إصدار أمر شراء وتوريد',
+      isRead: false
+    }));
+
+    res.json({
+      success: true,
+      audit: {
+        counts: { total: lowStockAlerts.length, unread: lowStockAlerts.length, lowStock: lowStockAlerts.length, overdueMilestones: 0 },
+        alerts: lowStockAlerts,
+        lowStockItems: lowStockAlerts,
+        overdueMilestones: []
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/alerts/simulate-overdue', async (req, res) => {
+  const { projectName, clientName, amount } = req.body || {};
+  const alert = {
+    id: `ALERT-MLS-${Date.now()}`,
+    title: `استحقاق دفعة متأخرة: ${projectName || 'مشروع سحابي'}`,
+    description: `العميل: ${clientName || 'عميل'}، القيمة المتأخرة: ${Number(amount || 0).toLocaleString()} ج.م`,
+    category: 'OVERDUE_MILESTONE',
+    severity: 'CRITICAL',
+    timeAgo: 'الآن',
+    timestamp: new Date().toISOString(),
+    targetTab: 'freelance',
+    actionLabel: 'متابعة التحصيل',
+    isRead: false
+  };
+  res.json({
+    success: true,
+    audit: {
+      counts: { total: 1, unread: 1, lowStock: 0, overdueMilestones: 1 },
+      alerts: [alert],
+      lowStockItems: [],
+      overdueMilestones: [alert]
+    }
+  });
+});
+
 // Real-time Server-Sent Events (SSE) for system alerts & notifications
 app.get('/api/alerts/stream', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -3139,9 +3200,9 @@ app.post('/api/sales', async (req, res) => {
               const ftxId = `ftx-sale-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
               await conn.query(
                 `INSERT INTO financial_transactions (
-                  id, reference_no, date, type, account_id, account_name,
-                  amount, balance_after, party_type, party_name, description, created_by
-                ) VALUES (?, ?, ?, 'INCOME', ?, ?, ?, ?, 'CUSTOMER', ?, ?, 'كاشير ومبيعات')`,
+                  id, reference_no, date, transaction_type, account_id, account_name,
+                  flow, amount, balance_after, category, party_type, party_name, payment_method, notes
+                ) VALUES (?, ?, ?, 'RECEIPT', ?, ?, 'IN', ?, ?, 'مبيعات نقدية', 'CUSTOMER', ?, ?, ?)`,
                 [
                   ftxId,
                   invNumber,
@@ -3151,6 +3212,7 @@ app.post('/api/sales', async (req, res) => {
                   spAmt,
                   newAccBalance,
                   customer_name || 'عميل نقدي',
+                  sp.method || 'دفعة مقسمة',
                   `تحصيل مبيعات (${sp.method || 'دفعة مقسمة'}) فاتورة رقم: ${invNumber}`
                 ]
               );
@@ -3167,9 +3229,9 @@ app.post('/api/sales', async (req, res) => {
           const ftxId = `ftx-sale-${Date.now()}`;
           await conn.query(
             `INSERT INTO financial_transactions (
-              id, reference_no, date, type, account_id, account_name,
-              amount, balance_after, party_type, party_name, description, created_by
-            ) VALUES (?, ?, ?, 'INCOME', ?, ?, ?, ?, 'CUSTOMER', ?, ?, 'كاشير ومبيعات')`,
+              id, reference_no, date, transaction_type, account_id, account_name,
+              flow, amount, balance_after, category, party_type, party_name, payment_method, notes
+            ) VALUES (?, ?, ?, 'RECEIPT', ?, ?, 'IN', ?, ?, 'مبيعات نقدية', 'CUSTOMER', ?, ?, ?)`,
             [
               ftxId,
               invNumber,
@@ -3179,6 +3241,7 @@ app.post('/api/sales', async (req, res) => {
               actualPaid,
               newAccBalance,
               customer_name || 'عميل نقدي',
+              payment_type || 'CASH',
               `تحصيل مبيعات فاتورة رقم: ${invNumber}`
             ]
           );
@@ -3312,9 +3375,9 @@ app.post('/api/sales/:id/return', async (req, res) => {
         const ftxId = `ftx-ret-${Date.now()}`;
         await conn.query(
           `INSERT INTO financial_transactions (
-            id, reference_no, date, type, account_id, account_name,
-            amount, balance_after, party_type, party_name, description, created_by
-          ) VALUES (?, ?, CURDATE(), 'EXPENSE', ?, ?, ?, ?, 'CUSTOMER', ?, ?, 'مرتجع مبيعات')`,
+            id, reference_no, date, transaction_type, account_id, account_name,
+            flow, amount, balance_after, category, party_type, party_name, payment_method, notes
+          ) VALUES (?, ?, CURDATE(), 'PAYMENT', ?, ?, 'OUT', ?, ?, 'مرتجع مبيعات', 'CUSTOMER', ?, 'CASH', ?)`,
           [
             ftxId,
             inv.invoice_number,
