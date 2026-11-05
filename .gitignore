@@ -9,3 +9,10 @@ coverage/
 .agents/
 .vscode/
 *.zip
+
+# Sensitive database configuration & license credentials
+db_config.json
+Dragon.enc
+*.enc
+*.lic
+*.key
