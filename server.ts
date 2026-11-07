@@ -855,7 +855,7 @@ function getCurrentVersion(): string {
   } catch (e) {
     // ignore
   }
-  return 'v1.0.2';
+  return 'v1.0.3';
 }
 
 function isVersionNewer(latest: string, current: string): boolean {
